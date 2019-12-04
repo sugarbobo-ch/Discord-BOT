@@ -1,4 +1,7 @@
-const { Attachment, RichEmbed } = require('discord.js')
+const {
+  Attachment,
+  RichEmbed
+} = require('discord.js')
 const path = require('../config/path.json')
 const fileManager = require('../utils/file.js')
 const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg']
@@ -46,7 +49,9 @@ module.exports = {
           delete responseDict[commands[1]]
           message.reply(`${commands[1]} 指令已經刪除`)
           saveCommandFile()
-        } else { message.reply(`${commands[1]} 指令未在清單內`) }
+        } else {
+          message.reply(`${commands[1]} 指令未在清單內`)
+        }
       }
     } else if (commands.length === 1) {
       if (getCommandName(message) === 'list' || getCommandName(message) === 'help') {
@@ -55,11 +60,17 @@ module.exports = {
     }
   },
   checkCommand: (message) => {
-    if (responseDict === undefined || responseDict === null) { module.exports.readCommandDict() }
+    if (responseDict === undefined || responseDict === null) {
+      module.exports.readCommandDict()
+    }
     const command = getCommandName(message)
-    if (command in keywords) { return }
+    if (command in keywords) {
+      return
+    }
     if (command in responseDict) {
-      if (responseDict[command] === '隨機圖片') { return }
+      if (responseDict[command] === '隨機圖片') {
+        return
+      }
       message.channel.send(responseDict[command])
     }
   },
@@ -96,8 +107,7 @@ module.exports = {
         if (fileManager.checkFileDirectoryIsExist(dir)) {
           const file = fileManager.getRandomFile(dir)
           if (file === null) {
-            message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片'
-            )
+            message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片')
             return
           }
           const attachment = new Attachment(file)

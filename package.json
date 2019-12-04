@@ -15,12 +15,12 @@
   },
   "dependencies": {
     "discord.js": "^11.5.1",
+    "forever": "^1.0.0",
     "fs": "^0.0.1-security",
     "https": "^1.0.0",
-    "nodemon": "^2.0.1",
     "path": "^0.12.7"
   },
   "scripts": {
-    "start": "nodemon -x 'node ./index.js || (sleep 5; touch ./index.js)"
+    "start": "forever start -w ./index.js"
   }
 }
