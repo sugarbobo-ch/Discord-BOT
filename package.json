@@ -1,0 +1,26 @@
+{
+  "name": "kokkoro-bot",
+  "version": "1.0.0",
+  "description": "Discord BOT",
+  "main": "index.js",
+  "author": "Jin An",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^6.7.2",
+    "eslint-config-standard": "^14.1.0",
+    "eslint-plugin-import": "^2.18.2",
+    "eslint-plugin-node": "^10.0.0",
+    "eslint-plugin-promise": "^4.2.1",
+    "eslint-plugin-standard": "^4.0.1"
+  },
+  "dependencies": {
+    "discord.js": "^11.5.1",
+    "fs": "^0.0.1-security",
+    "https": "^1.0.0",
+    "nodemon": "^2.0.1",
+    "path": "^0.12.7"
+  },
+  "scripts": {
+    "start": "nodemon -x 'node ./index.js || (sleep 5; touch ./index.js)"
+  }
+}
