@@ -20,7 +20,11 @@
     "https": "^1.0.0",
     "path": "^0.12.7"
   },
+  "nodemonConfig": {
+    "ignore": ["config/*.json"]
+  },
   "scripts": {
-    "start": "forever start -w ./index.js"
+    "dev": "nodemon ./index.js",
+    "start": "nodemon --exitcrash ./index.js"
   }
 }

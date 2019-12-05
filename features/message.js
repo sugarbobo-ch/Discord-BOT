@@ -1,13 +1,10 @@
-const {
-  Attachment,
-  RichEmbed
-} = require('discord.js')
+const { Attachment, RichEmbed } = require('discord.js')
 const path = require('../config/path.json')
 const fileManager = require('../utils/file.js')
 const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg']
 var responseDict = []
 
-const getCommandName = (message) => {
+const getCommandName = message => {
   const content = message.content.substr(1)
   const commands = content.split(' ')
   return commands[0].toLowerCase()
@@ -21,17 +18,24 @@ module.exports = {
   readCommandDict: () => {
     responseDict = fileManager.readFileSync(path.messagesCommandPath)
   },
-  checkPrefix: (message) => {
-    return (message.content.charAt(0) === '!' || message.content.charAt(0) === '！')
+  checkPrefix: message => {
+    return (
+      (message.content.charAt(0) === '!' ||
+        message.content.charAt(0) === '！') &&
+      message.content.length !== 1
+    )
   },
-  isNormalCommand: (message) => {
+  isNormalCommand: message => {
     return !keywords.includes(getCommandName(message))
   },
-  editCommand: (message) => {
+  editCommand: message => {
     const content = message.content.substr(1)
     const commands = content.split(' ')
     if (commands.length === 3) {
-      if (getCommandName(message) === 'add' || getCommandName(message) === 'edit') {
+      if (
+        getCommandName(message) === 'add' ||
+        getCommandName(message) === 'edit'
+      ) {
         if (commands[1] in responseDict) {
           message.reply(`${commands[1]} 指令已經更新`)
         } else {
@@ -54,12 +58,15 @@ module.exports = {
         }
       }
     } else if (commands.length === 1) {
-      if (getCommandName(message) === 'list' || getCommandName(message) === 'help') {
+      if (
+        getCommandName(message) === 'list' ||
+        getCommandName(message) === 'help'
+      ) {
         module.exports.displayAvailableCommands(message)
       }
     }
   },
-  checkCommand: (message) => {
+  checkCommand: message => {
     if (responseDict === undefined || responseDict === null) {
       module.exports.readCommandDict()
     }
@@ -74,30 +81,42 @@ module.exports = {
       message.channel.send(responseDict[command])
     }
   },
-  displayAvailableCommands: (message) => {
+  displayAvailableCommands: message => {
     const embed = new RichEmbed()
       .setTitle('指令列表')
       .setDescription('以下是可以使用的指令：')
     embed.addField('!add [指令名稱] [BOT回覆內容]', '新增指令')
-    embed.addField('!add [資料夾] "隨機圖片"', '新增特定指令的隨機圖片，一定要先新增資料夾才可以加圖片，之後再用 !addimg [資料夾] [網址] 來增加圖片')
+    embed.addField(
+      '!add [資料夾] "隨機圖片"',
+      '新增特定指令的隨機圖片，先新增!add [資料夾] "隨機圖片" 指令後，再用 !addimg [資料夾] [網址] 來增加圖片'
+    )
     embed.addField('!edit [指令名稱] [BOT回覆內容]', '編輯指令')
     embed.addField('!remove [指令名稱]', '移除指令')
     embed.addField('!addimg [資料夾] [網址]', '在特定的資料夾下新增圖片')
+    embed.addField(
+      '!god [神的語言]',
+      '!nhentai, !神的語言都可以開車，但會偵測是否是老司機頻道'
+    )
+    embed.addField('!pixiv', '請給我色圖')
+    var keyString = ''
     for (var key in responseDict) {
-      embed.addField('!' + key, responseDict[key])
+      keyString += key + ' '
     }
-
+    embed.addField('一般指令：', keyString)
     message.channel.send(embed)
   },
-  addImageCommand: (message) => {
+  addImageCommand: message => {
     const content = message.content.substr(1)
     const commands = content.split(' ')
-    fileManager.downloadFile(commands[2], 'assets/images/' + commands[1] + '/',
-      (result) => {
+    fileManager.downloadFile(
+      commands[2],
+      'assets/images/' + commands[1] + '/',
+      result => {
         message.reply('圖片新增成功')
-      })
+      }
+    )
   },
-  getImageCommand: (message) => {
+  getImageCommand: message => {
     const content = message.content.substr(1)
     const commands = content.split(' ')
     if (getCommandName(message) in responseDict) {
