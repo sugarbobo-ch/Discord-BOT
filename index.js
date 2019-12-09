@@ -12,8 +12,11 @@ client.on('ready', () => {
 client.login(auth.token)
 
 client.on('message', message => {
-  const result = messageCtrl.checkPrefix(message)
-  if (!result) return
+  var result = messageCtrl.checkPrefix(message)
+  if (!result) {
+    result = messageCtrl.checkMention(message)
+    if (!result) { return }
+  }
   if (messageCtrl.isNormalCommand(message)) {
     messageCtrl.checkCommand(message)
     messageCtrl.getImageCommand(message)
