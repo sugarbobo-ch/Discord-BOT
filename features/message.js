@@ -57,8 +57,11 @@ module.exports = {
           message.reply(`${command} 指令已經加到列表中`)
         }
         var str = ''
+        console.log(commands)
         for (var i in commands) {
-          if (i !== 0) { str += ' ' }
+          if (i !== '0') {
+            str += ' '
+          }
           str += commands[i]
         }
         responseDict[command] = str
@@ -95,7 +98,7 @@ module.exports = {
       return
     }
     if (command in responseDict) {
-      if (responseDict[command] === '隨機圖片') {
+      if (responseDict[command] === '隨機圖片' || responseDict[command] === '隨機媒體') {
         return
       }
       message.channel.send(responseDict[command])
@@ -120,7 +123,7 @@ module.exports = {
     embed.addField('!pixiv', '請給我色圖')
     var keyString = ''
     for (var key in responseDict) {
-      keyString += key + ' '
+      keyString += key + ', '
     }
     embed.addField('一般指令：', keyString)
     message.channel.send(embed)
@@ -144,7 +147,27 @@ module.exports = {
       if (responseDict[folderName] === '隨機圖片') {
         const dir = 'assets/images/' + folderName + '/'
         if (fileManager.checkFileDirectoryIsExist(dir)) {
-          const file = fileManager.getRandomFile(folderName)
+          const file = fileManager.getRandomFile('images', folderName)
+          if (file === null) {
+            message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片')
+            return
+          }
+          const attachment = new Attachment(file)
+          // Send the attachment in the message channel with a content
+          message.channel.send(attachment)
+        }
+      }
+    }
+  },
+  getMediaCommand: message => {
+    const content = message.content.substr(1)
+    const commands = content.split(' ')
+    if (module.exports.getCommandName(message) in responseDict) {
+      const folderName = commands[0].toLowerCase()
+      if (responseDict[folderName] === '隨機媒體') {
+        const dir = 'assets/media/' + folderName + '/'
+        if (fileManager.checkFileDirectoryIsExist(dir)) {
+          const file = fileManager.getRandomFile('media', folderName)
           if (file === null) {
             message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片')
             return

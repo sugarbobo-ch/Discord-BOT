@@ -20,6 +20,7 @@ client.on('message', message => {
   if (messageCtrl.isNormalCommand(message)) {
     messageCtrl.checkCommand(message)
     messageCtrl.getImageCommand(message)
+    messageCtrl.getMediaCommand(message)
     nsfwCtrl.getPixivURL(message)
     nsfwCtrl.getHentaiURL(message)
     nsfwCtrl.getWnacgURL(message)

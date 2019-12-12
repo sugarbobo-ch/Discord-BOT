@@ -73,8 +73,8 @@ module.exports = {
       console.log(error)
     }
   },
-  getRandomFile: (dir) => {
-    dir = 'assets/images/' + dir + '/'
+  getRandomFile: (type, dir) => {
+    dir = 'assets/' + type + '/' + dir + '/'
     var files = fs.readdirSync(dir)
     const file = files[Math.floor(Math.random() * files.length)]
     if (file === undefined) { return null }
