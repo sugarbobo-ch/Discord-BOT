@@ -1,4 +1,4 @@
 node_modules
-auth.json
-assets/images
+assets/*
 config/commands.json
+config/auth.json
