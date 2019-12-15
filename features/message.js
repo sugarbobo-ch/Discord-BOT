@@ -1,7 +1,9 @@
 const { Attachment, RichEmbed } = require('discord.js')
 const path = require('../config/path.json')
 const fileManager = require('../utils/file.js')
-const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg']
+const clientManager = require('../utils/client.js')
+const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'send']
+
 var responseDict = []
 
 const saveCommandFile = () => {
@@ -20,7 +22,6 @@ module.exports = {
     )
   },
   checkMention: message => {
-    console.log(message.content)
     return (
       (message.content.charAt(0) === '<' &&
         message.content.charAt(1) === '@' &&
@@ -41,33 +42,23 @@ module.exports = {
     const content = message.content.substr(1)
     var commands = content.split(' ')
     if (commands.length >= 3) {
+      console.log(3)
       if (
         module.exports.getCommandName(message) === 'add' ||
         module.exports.getCommandName(message) === 'edit'
       ) {
         var command = commands[1].toLowerCase()
-        // remove add/edit
-        commands.shift()
-        // remove command
-        commands.shift()
         if (command in responseDict) {
           message.reply(`${command} 指令已經更新`)
         } else {
-          responseDict[command] = commands[2]
           message.reply(`${command} 指令已經加到列表中`)
         }
-        var str = ''
-        console.log(commands)
-        for (var i in commands) {
-          if (i !== '0') {
-            str += ' '
-          }
-          str += commands[i]
-        }
-        responseDict[command] = str
+        responseDict[command] = content.replace(/^([^ ]+ ){2}/, '')
         saveCommandFile()
       } else if (module.exports.getCommandName(message) === 'addimg') {
         module.exports.addImageCommand(message)
+      } else if (module.exports.getCommandName(message) === 'send') {
+        module.exports.sendChannelMessage(message)
       }
     } else if (commands.length === 2) {
       if (module.exports.getCommandName(message) === 'remove') {
@@ -178,5 +169,10 @@ module.exports = {
         }
       }
     }
+  },
+  sendChannelMessage: message => {
+    const content = message.content.substr(1)
+    const commands = content.split(' ')
+    clientManager.client.channels.get(commands[1]).send(content.replace(/^([^ ]+ ){2}/, ''))
   }
 }
