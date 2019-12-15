@@ -1,5 +1,5 @@
 const { Client } = require('discord.js')
-const auth = require('./auth.json')
+const auth = require('./config/auth.json')
 const messageCtrl = require('./features/message.js')
 const nsfwCtrl = require('./features/nsfw.js')
 const clientManager = require('./utils/client.js')
