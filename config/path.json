@@ -1,4 +1,5 @@
 {
     "messagesCommandPath": "./config/commands.json",
-    "assetsCommandPath": "./config/assets.json"
+    "assetsCommandPath": "./config/assets.json",
+    "serversListPath": "./config/servers.json"
 }

@@ -24,7 +24,7 @@ const uuidv4 = () => {
 }
 
 const checkURL = (url) => {
-  return (url.match(/\.(jpeg|jpg|gif|png)$/) != null)
+  return (url.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/) != null)
 }
 
 module.exports = {
@@ -58,7 +58,7 @@ module.exports = {
       if (!isDirVaild(dest)) { return }
       dest = 'assets/images/' + dest + '/'
       if (!fs.existsSync(dest)) { fs.mkdirSync(dest) }
-      const fileDest = dest + uuidv4() + url.match(/\.(jpeg|jpg|gif|png)$/)[0]
+      const fileDest = dest + uuidv4() + url.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/)[0]
       var file = fs.createWriteStream(fileDest)
       https.get(url, function (response) {
         response.pipe(file)

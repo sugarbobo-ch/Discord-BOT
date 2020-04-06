@@ -1,4 +1,8 @@
 node_modules
 assets/*
+config/servers
+config/servers.json
 config/commands.json
 config/auth.json
+logs/*
+iisnode/*

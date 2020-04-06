@@ -1,18 +1,28 @@
 const { Attachment, RichEmbed } = require('discord.js')
 const path = require('../config/path.json')
+const auth = require('../config/auth.json')
 const fileManager = require('../utils/file.js')
 const clientManager = require('../utils/client.js')
-const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'send']
+const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'send', 'reset']
 
 var responseDict = []
+var serversList = []
 
-const saveCommandFile = () => {
-  fileManager.writeFileSync(path.messagesCommandPath, responseDict)
+const saveCommandFile = (server) => {
+  fileManager.writeFileSync('./config/servers/' + server + '.json', responseDict[server])
+}
+
+const saveServersListFile = () => {
+  fileManager.writeFileSync(path.serversListPath, serversList)
 }
 
 module.exports = {
   readCommandDict: () => {
-    responseDict = fileManager.readFileSync(path.messagesCommandPath)
+    serversList = fileManager.readFileSync(path.serversListPath)
+    serversList.forEach(server => {
+      responseDict[server] = fileManager.readFileSync(`./config/servers/${server}.json`)
+    })
+    console.log(serversList)
   },
   checkPrefix: message => {
     return (
@@ -22,11 +32,12 @@ module.exports = {
     )
   },
   checkMention: message => {
+    const text = message.content === undefined ? message : message.content
+    if (typeof (text) !== 'string') return false
     return (
-      (message.content.charAt(0) === '<' &&
-        message.content.charAt(1) === '@' &&
-        message.content.charAt(2) === '!') &&
-      message.content.length !== 1
+      (text.charAt(0) === '<' &&
+      (text.charAt(1) === ':' || text.charAt(1) === '@')) &&
+      text.length !== 1
     )
   },
   getCommandName: message => {
@@ -36,90 +47,115 @@ module.exports = {
     return commands[0].toLowerCase()
   },
   isNormalCommand: message => {
-    return !keywords.includes(module.exports.getCommandName(message))
+    const commandName = module.exports.getCommandName(message)
+    return { isNormalCommand: !keywords.includes(commandName), name: commandName }
   },
-  editCommand: message => {
+  editCommand: (message, command) => {
     const content = message.content.substr(1)
+    const server = message.guild.id
     var commands = content.split(' ')
+    if (!serversList.includes(server)) {
+      serversList.push(server)
+      responseDict[server] = {}
+      saveServersListFile()
+    }
+    if (command === undefined || command === null) {
+      command = module.exports.getCommandName(message)
+    }
     if (commands.length >= 3) {
-      console.log(3)
-      if (
-        module.exports.getCommandName(message) === 'add' ||
-        module.exports.getCommandName(message) === 'edit'
-      ) {
-        var command = commands[1].toLowerCase()
-        if (command in responseDict) {
+      if (command === 'add' || command === 'edit') {
+        command = module.exports.checkMention(commands[1]) ? commands[1] : commands[1].toLowerCase()
+        if (command in responseDict[server]) {
           message.reply(`${command} 指令已經更新`)
         } else {
           message.reply(`${command} 指令已經加到列表中`)
         }
-        responseDict[command] = content.replace(/^([^ ]+ ){2}/, '')
-        saveCommandFile()
-      } else if (module.exports.getCommandName(message) === 'addimg') {
+        responseDict[server][command] = content.replace(/^([^ ]+ ){2}/, '')
+        saveCommandFile(server)
+      } else if (command === 'addimg') {
         module.exports.addImageCommand(message)
-      } else if (module.exports.getCommandName(message) === 'send') {
+      } else if (command === 'send') {
         module.exports.sendChannelMessage(message)
       }
     } else if (commands.length === 2) {
-      if (module.exports.getCommandName(message) === 'remove') {
-        const command = commands[1].toLowerCase()
-        if (command in responseDict) {
-          delete responseDict[command]
+      if (command === 'remove') {
+        const command = module.exports.checkMention(commands[1]) ? commands[1] : commands[1].toLowerCase()
+        if (command in responseDict[server]) {
+          delete responseDict[server][command]
           message.reply(`${command} 指令已經刪除`)
-          saveCommandFile()
+          saveCommandFile(server)
         } else {
           message.reply(`${command} 指令未在清單內`)
         }
+      } else if (command === 'reset' && commands[1] === 'server') {
+        module.exports.resetServer(server)
       }
     } else if (commands.length === 1) {
-      if (
-        module.exports.getCommandName(message) === 'list' ||
-        module.exports.getCommandName(message) === 'help'
-      ) {
+      if (command === 'list' || command === 'help') {
         module.exports.displayAvailableCommands(message)
       }
     }
   },
-  checkCommand: message => {
+  resetServer: (server) => {
+    if (!serversList.includes(server)) {
+      serversList.push(server)
+      responseDict[server] = {}
+      saveServersListFile()
+    }
+  },
+  checkCommand: (message, command) => {
+    const server = message.guild.id
     if (responseDict === undefined || responseDict === null) {
       module.exports.readCommandDict()
     }
-    const command = module.exports.getCommandName(message)
+    if (command === undefined || command === null) {
+      command = module.exports.getCommandName(message)
+    }
     if (command in keywords) {
       return
     }
-    if (command in responseDict) {
-      if (responseDict[command] === '隨機圖片' || responseDict[command] === '隨機媒體') {
+    if (responseDict[server] === undefined) {
+      message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
+      var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
+      clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
+      return
+    }
+    if (command in responseDict[server]) {
+      if (responseDict[server][command] === '隨機圖片' || responseDict[server][command] === '隨機媒體') {
         return
       }
-      message.channel.send(responseDict[command])
+      message.channel.send(responseDict[server][command])
     }
   },
   displayAvailableCommands: message => {
     const embed = new RichEmbed()
       .setTitle('指令列表')
       .setDescription('以下是可以使用的指令 (記得加空白，BOT沒反應代表格式錯誤或是BOT掛了)：')
-    embed.addField('!add 指令名稱 BOT回覆內容', '新增指令')
+    embed.addField('!add [指令名稱] [BOT回覆內容]', '新增指令')
     embed.addField(
-      '!add 指令名稱 隨機圖片',
+      '!add [指令名稱] 隨機圖片',
       '新增特定指令的隨機圖片，先新增"!add 指令名稱 隨機圖片"指令後，再用 "!addimg 指令 圖片網址" 來增加圖片，圖片網址結尾必須是圖片檔，不要有?width=1202&height=677之類的訊息'
     )
-    embed.addField('!edit 指令名稱 BOT回覆內容', '編輯指令')
-    embed.addField('!remove 指令名稱', '移除指令')
-    embed.addField('!addimg 指令名稱 網址', '新增特定指令的隨機圖片，先新增"!add 指令名稱 隨機圖片"指令後，再用 "!addimg 指令 圖片網址" 來增加圖片，圖片網址結尾必須是圖片檔，不要有?width=1202&height=677之類的訊息')
+    embed.addField('!edit [指令名稱] [BOT回覆內容]', '編輯指令')
+    embed.addField('!remove [指令名稱]', '移除指令')
+    embed.addField('!addimg [指令名稱] [網址]', '新增特定指令的隨機圖片，先新增"!add 指令名稱 隨機圖片"指令後，再用 "!addimg 指令 圖片網址" 來增加圖片，圖片網址結尾必須是圖片檔，不要有?width=1202&height=677之類的訊息')
     embed.addField(
-      '!god 神的語言',
+      '!god [神的語言]',
       '!nhentai, !神的語言 都可以開車，但會偵測是否是老司機頻道'
     )
-    embed.addField('!pixiv', '請給我色圖')
+    embed.addField('!pixiv [作品ID]', '請給我色圖')
+    embed.addField('!wnacg [車號]', '開車')
+    embed.addField('!搜圖 [圖片網址]', '搜尋圖片')
     var keyString = ''
-    for (var key in responseDict) {
+    var keyFlag = false
+    for (var key in responseDict[message.guild.id]) {
+      keyFlag = true
       keyString += key + ', '
     }
-    embed.addField('一般指令：', keyString)
+    embed.addField('一般指令：', keyFlag ? keyString : '無指令')
     message.channel.send(embed)
   },
-  addImageCommand: message => {
+  addImageCommand: (message, command) => {
     const content = message.content.substr(1)
     const commands = content.split(' ')
     fileManager.downloadFile(
@@ -130,32 +166,52 @@ module.exports = {
       }
     )
   },
-  getImageCommand: message => {
+  getImageCommand: (message, command) => {
     const content = message.content.substr(1)
+    const server = message.guild.id
     const commands = content.split(' ')
-    if (module.exports.getCommandName(message) in responseDict) {
+    if (command === undefined || command === null) {
+      command = module.exports.getCommandName(message)
+    }
+    if (responseDict[server] === undefined) {
+      message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
+      var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
+      clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
+      return
+    }
+    if (command in responseDict[server]) {
       const folderName = commands[0].toLowerCase()
-      if (responseDict[folderName] === '隨機圖片') {
+      if (responseDict[server][folderName] === '隨機圖片') {
         const dir = 'assets/images/' + folderName + '/'
         if (fileManager.checkFileDirectoryIsExist(dir)) {
           const file = fileManager.getRandomFile('images', folderName)
           if (file === null) {
-            message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片')
+            message.reply('發生錯誤，該指令尚未加入圖片')
             return
           }
           const attachment = new Attachment(file)
           // Send the attachment in the message channel with a content
           message.channel.send(attachment)
-        }
+        } else { message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片') }
       }
     }
   },
-  getMediaCommand: message => {
+  getMediaCommand: (message, command) => {
     const content = message.content.substr(1)
+    const server = message.guild.id
     const commands = content.split(' ')
-    if (module.exports.getCommandName(message) in responseDict) {
+    if (command === undefined || command === null) {
+      command = module.exports.getCommandName(message)
+    }
+    if (responseDict[server] === undefined) {
+      message.channel.send('此伺服器重置後尚未進行設定，請聯絡：可可撥#9487')
+      var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
+      clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
+      return
+    }
+    if (command in responseDict[server]) {
       const folderName = commands[0].toLowerCase()
-      if (responseDict[folderName] === '隨機媒體') {
+      if (responseDict[server][folderName] === '隨機媒體') {
         const dir = 'assets/media/' + folderName + '/'
         if (fileManager.checkFileDirectoryIsExist(dir)) {
           const file = fileManager.getRandomFile('media', folderName)

@@ -15,24 +15,35 @@ client.login(auth.token)
 
 client.on('message', message => {
   const messageAttachment = message.attachments.values().next().value
-  if (messageAttachment !== undefined) {
-    console.log(`[${message.channel.name}] ${message.author.username}: ${message.content + '\n' + messageAttachment.url}`)
-  } else {
-    console.log(`[${message.channel.name}] ${message.author.username}: ${message.content}`)
+  if (message.channel.id !== auth.backupChannelId) {
+    var log = ''
+    if (messageAttachment !== undefined) {
+      log = `[${message.createdAt}] ${message.guild.name}: ${message.channel.name} - ${message.author.username}: ${message.content + '\n' + messageAttachment.url}`
+    } else {
+      log = `[${message.createdAt}] ${message.guild.name}: ${message.channel.name} - ${message.author.username}: ${message.content}`
+    }
+    console.log(log)
+    clientManager.client.channels.get(auth.backupChannelId).send(log)
   }
+  if (message.author.bot || message.author.id === client.user.id) { return }
+
   var result = messageCtrl.checkPrefix(message)
   if (!result) {
     result = messageCtrl.checkMention(message)
     if (!result) { return }
   }
-  if (messageCtrl.isNormalCommand(message)) {
-    messageCtrl.checkCommand(message)
-    messageCtrl.getImageCommand(message)
-    messageCtrl.getMediaCommand(message)
+  const command = messageCtrl.isNormalCommand(message)
+  if (command.isNormalCommand) {
+    messageCtrl.checkCommand(message, command.name)
+    messageCtrl.getImageCommand(message, command.name)
+    messageCtrl.getMediaCommand(message, command.name)
+    nsfwCtrl.getSourceURL(message)
     nsfwCtrl.getPixivURL(message)
     nsfwCtrl.getHentaiURL(message)
     nsfwCtrl.getWnacgURL(message)
   } else {
-    messageCtrl.editCommand(message)
+    messageCtrl.editCommand(message, command.name)
   }
 })
+
+client.on('error', console.error)

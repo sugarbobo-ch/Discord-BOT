@@ -14,6 +14,15 @@ module.exports = {
       }
     }
   },
+  getSourceURL: (message) => {
+    const content = message.content.substr(1)
+    const commands = content.split(' ')
+    if (commands.length === 2) {
+      if (getCommandName(message) === '搜圖') {
+        message.channel.send(`https://saucenao.com/search.php?db=999&url=${commands[1]}`)
+      }
+    }
+  },
   getHentaiURL: (message) => {
     const content = message.content.substr(1)
     const commands = content.split(' ')

@@ -25,6 +25,6 @@
   },
   "scripts": {
     "dev": "nodemon ./index.js",
-    "start": "nodemon --exitcrash ./index.js"
+    "start": "nodemon -e json --exitcrash ./index.js"
   }
 }
