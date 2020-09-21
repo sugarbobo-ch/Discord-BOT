@@ -31,17 +31,26 @@ module.exports = {
       message.content.length !== 1
     )
   },
-  checkMention: message => {
+  checkMentions: message => {
     const text = message.content === undefined ? message : message.content
     if (typeof (text) !== 'string') return false
     return (
-      (text.charAt(0) === '<' &&
-      (text.charAt(1) === ':' || text.charAt(1) === '@')) &&
+      text.charAt(0) === '<' &&
+      text.charAt(1) === '@' &&
+      text.length !== 1
+    )
+  },
+  checkEmoji: message => {
+    const text = message.content === undefined ? message : message.content
+    if (typeof (text) !== 'string') return false
+    return (
+      text.charAt(0) === '<' &&
+      text.charAt(1) === ':' &&
       text.length !== 1
     )
   },
   getCommandName: message => {
-    if (module.exports.checkMention(message)) { return message }
+    if (module.exports.checkMentions(message) || module.exports.checkEmoji(message)) { return message }
     const content = message.content.substr(1)
     const commands = content.split(' ')
     return commands[0].toLowerCase()
@@ -63,15 +72,24 @@ module.exports = {
       command = module.exports.getCommandName(message)
     }
     if (commands.length >= 3) {
-      if (command === 'add' || command === 'edit') {
-        command = module.exports.checkMention(commands[1]) ? commands[1] : commands[1].toLowerCase()
+      const action = command
+      if (action === 'add' || action === 'edit') {
+        command = (module.exports.checkMentions(commands[1]) || module.exports.checkEmoji(commands[1])) ? commands[1] : commands[1].toLowerCase().trimStart()
+        if (command.length === 0) {
+          message.reply('格式錯誤，請確認空白位置和數量正確')
+          return
+        }
         if (command in responseDict[server]) {
-          message.reply(`${command} 指令已經更新`)
-        } else {
-          message.reply(`${command} 指令已經加到列表中`)
+          if (action === 'add') {
+            if (responseDict[server][command] === '隨機圖片') {
+              message.reply(`${command} 指令目前是設定回覆隨機圖片，若要增加圖片到這個指令請使用 !addimg，若要把隨機圖片變成指定回覆文字訊息(或是單張圖片網址)請使用 !edit`)
+              return
+            }
+          }
         }
         responseDict[server][command] = content.replace(/^([^ ]+ ){2}/, '')
         saveCommandFile(server)
+        if (action === 'add') { message.reply(`${command} 指令已經新增到列表中，內容： ${responseDict[server][command]}`) } else { message.reply(`${command} 指令已經更新，內容： ${responseDict[server][command]}`) }
       } else if (command === 'addimg') {
         module.exports.addImageCommand(message)
       } else if (command === 'send') {
@@ -79,7 +97,7 @@ module.exports = {
       }
     } else if (commands.length === 2) {
       if (command === 'remove') {
-        const command = module.exports.checkMention(commands[1]) ? commands[1] : commands[1].toLowerCase()
+        const command = (module.exports.checkMentions(commands[1]) || module.exports.checkEmoji(commands[1])) ? commands[1] : commands[1].toLowerCase()
         if (command in responseDict[server]) {
           delete responseDict[server][command]
           message.reply(`${command} 指令已經刪除`)
@@ -124,13 +142,30 @@ module.exports = {
       if (responseDict[server][command] === '隨機圖片' || responseDict[server][command] === '隨機媒體') {
         return
       }
-      message.channel.send(responseDict[server][command])
+      if (responseDict[server][command].includes('{}')) {
+        const content = message.content.substr(1)
+        const commandLineArray = content.split(' ')
+        commandLineArray.shift()
+        var plainText = responseDict[server][command]
+        commandLineArray.forEach(element => {
+          plainText = plainText.replace('{}', element)
+        })
+        const regex = RegExp(/{}/g)
+        const regex2 = RegExp(/%7B%7D/g)
+        if (commandLineArray.length > 0 && (regex.test(plainText) || regex2.test(plainText))) {
+          console.log(1123)
+          plainText = plainText.replace(regex, commandLineArray[0])
+          plainText = plainText.replace(regex2, commandLineArray[0])
+        }
+        message.channel.send(`${plainText}`)
+      } else { message.channel.send(responseDict[server][command]) }
     }
   },
   displayAvailableCommands: message => {
     const embed = new RichEmbed()
       .setTitle('指令列表')
       .setDescription('以下是可以使用的指令 (記得加空白，BOT沒反應代表格式錯誤或是BOT掛了)：')
+
     embed.addField('!add [指令名稱] [BOT回覆內容]', '新增指令')
     embed.addField(
       '!add [指令名稱] 隨機圖片',
@@ -146,13 +181,28 @@ module.exports = {
     embed.addField('!pixiv [作品ID]', '請給我色圖')
     embed.addField('!wnacg [車號]', '開車')
     embed.addField('!搜圖 [圖片網址]', '搜尋圖片')
+    embed.addField('!keep [文字訊息]', '暫存文字訊息，最多10筆，超過後從最舊開始刪除，重開BOT後也會消失')
+    embed.addField('!keeplist', '顯示使用者目前儲存的訊息')
+    embed.addField('特殊字元 {}', '在一般回覆訊息內加入 {} 可以使用變數功能，例如："!add 搜尋 https://www.google.com/search?q={}" << (這個符號是 {})，使用: !搜尋 Discord BOT會回覆 https://www.google.com/search?q=Discord')
+    /*
     var keyString = ''
     var keyFlag = false
+    var keyOverflowFlag = false
+    var keyList = []
     for (var key in responseDict[message.guild.id]) {
       keyFlag = true
-      keyString += key + ', '
+      keyList.unshift(key)
+      keyString = key + ' ' + keyString
+      if (keyString.length >= 960) {
+        keyOverflowFlag = true
+        keyString = keyString.substring(0, keyString.length - keyList[keyList.length - 1].length - 1)
+        keyList.shift()
+      }
     }
-    embed.addField('一般指令：', keyFlag ? keyString : '無指令')
+    if (keyOverflowFlag) {
+      keyString += '...'
+    }
+    embed.addField('一般指令：', keyFlag ? keyString : '無指令') */
     message.channel.send(embed)
   },
   addImageCommand: (message, command) => {
