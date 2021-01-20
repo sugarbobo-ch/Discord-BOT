@@ -28,10 +28,11 @@ module.exports = {
     const commands = content.split(' ')
     if (commands.length === 2) {
       if (getCommandName(message) === '神的語言' || getCommandName(message) === 'nhentai' || getCommandName(message) === 'god') {
+        /*
         if (!message.channel.nsfw) {
           message.channel.send('請至開車頻道使用此指令')
           return
-        }
+        } */
         message.channel.send(`https://nhentai.net/g/${commands[1]}`)
       }
     }
@@ -46,6 +47,19 @@ module.exports = {
           return
         }
         message.channel.send(`https://www.wnacg.com/photos-index-aid-${commands[1]}.html`)
+      }
+    }
+  },
+  isHashPrefix: (message) => {
+    return message.content.charAt(0) === '#'
+  },
+  sendHentaiURL: (message) => {
+    if (message.content.length === 7) {
+      const content = message.content.substr(1)
+      const reg = /^\d+$/
+      if (reg.test(content)) {
+        message.content = `!god ${content}`
+        module.exports.getHentaiURL(message)
       }
     }
   }

@@ -4,6 +4,7 @@ const messageCtrl = require('./features/message.js')
 const nsfwCtrl = require('./features/nsfw.js')
 const userCtrl = require('./features/user.js')
 const repeatCtrl = require('./features/repeat.js')
+const rollCallCtrl = require('./features/rollCall.js')
 const clientManager = require('./utils/client.js')
 const client = new Client()
 
@@ -25,7 +26,12 @@ client.on('message', message => {
       log = `[${message.createdAt}] ${message.guild !== null ? message.guild.name : '無名稱'}: ${message.channel.name} - ${message.author.username}: ${message.content}`
     }
     console.log(log)
-    if (messageCtrl.checkMentions(message)) { log = log.replace(/<([^<>]{1,})>/, 'mention') }
+    if (messageCtrl.checkMentions(message)) {
+      const mentionRegExp = /<@([^<>]{1,})>/g
+      while (mentionRegExp.test(log)) {
+        log = log.replace(mentionRegExp, 'mention')
+      }
+    }
     if (message.guild.id === '683378066730647643') { clientManager.client.channels.get(auth.backupChannelId).send(log) }
   }
   if (message.author.bot || message.author.id === client.user.id) { return }
@@ -34,6 +40,10 @@ client.on('message', message => {
   if (!result) {
     result = messageCtrl.checkMentions(message) || messageCtrl.checkEmoji(message)
     repeatCtrl.sendRepeatedMessage(message)
+
+    if (nsfwCtrl.isHashPrefix(message)) {
+      nsfwCtrl.sendHentaiURL(message)
+    }
     if (!result) { return }
   }
   const command = messageCtrl.isNormalCommand(message)
@@ -47,6 +57,7 @@ client.on('message', message => {
     nsfwCtrl.getWnacgURL(message)
     userCtrl.keep(message)
     userCtrl.getKeepsList(message)
+    rollCallCtrl.getRollCallCommand(message)
   } else {
     messageCtrl.editCommand(message, command.name)
   }

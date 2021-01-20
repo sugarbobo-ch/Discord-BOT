@@ -3,7 +3,7 @@ const path = require('../config/path.json')
 const auth = require('../config/auth.json')
 const fileManager = require('../utils/file.js')
 const clientManager = require('../utils/client.js')
-const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'send', 'reset']
+const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'delimg', 'send', 'reset']
 
 var responseDict = []
 var serversList = []
@@ -34,11 +34,7 @@ module.exports = {
   checkMentions: message => {
     const text = message.content === undefined ? message : message.content
     if (typeof (text) !== 'string') return false
-    return (
-      text.charAt(0) === '<' &&
-      text.charAt(1) === '@' &&
-      text.length !== 1
-    )
+    return /<@([^<>]{1,})>/g.test(text)
   },
   checkEmoji: message => {
     const text = message.content === undefined ? message : message.content
@@ -94,6 +90,8 @@ module.exports = {
         module.exports.addImageCommand(message)
       } else if (command === 'send') {
         module.exports.sendChannelMessage(message)
+      } else if (command === 'delimg') {
+        module.exports.removeImageFile(message)
       }
     } else if (commands.length === 2) {
       if (command === 'remove') {
@@ -164,7 +162,7 @@ module.exports = {
   displayAvailableCommands: message => {
     const embed = new RichEmbed()
       .setTitle('指令列表')
-      .setDescription('以下是可以使用的指令 (記得加空白，BOT沒反應代表格式錯誤或是BOT掛了)：')
+      .setDescription('以下是可以使用的指令 (記得加空白，BOT沒反應代表格式錯誤或是BOT掛了)，[]代表請用自己的文字替代整個單字：')
 
     embed.addField('!add [指令名稱] [BOT回覆內容]', '新增指令')
     embed.addField(
@@ -174,6 +172,7 @@ module.exports = {
     embed.addField('!edit [指令名稱] [BOT回覆內容]', '編輯指令')
     embed.addField('!remove [指令名稱]', '移除指令')
     embed.addField('!addimg [指令名稱] [網址]', '新增特定指令的隨機圖片，先新增"!add 指令名稱 隨機圖片"指令後，再用 "!addimg 指令 圖片網址" 來增加圖片，圖片網址結尾必須是圖片檔，不要有?width=1202&height=677之類的訊息')
+    embed.addField('!delimg [指令名稱/資料夾名稱] [檔案名稱含副檔名]', '移除資料夾內的檔案')
     embed.addField(
       '!god [神的語言]',
       '!nhentai, !神的語言 都可以開車，但會偵測是否是老司機頻道'
@@ -280,5 +279,20 @@ module.exports = {
     const content = message.content.substr(1)
     const commands = content.split(' ')
     clientManager.client.channels.get(commands[1]).send(content.replace(/^([^ ]+ ){2}/, ''))
+  },
+  removeImageFile: async message => {
+    const content = message.content.substr(1)
+    const commands = content.split(' ')
+    const folderName = commands[1].toLowerCase()
+    const dir = 'assets/images/' + folderName + '/'
+    try {
+      if (fileManager.checkFileDirectoryIsExist(dir)) {
+        await fileManager.removeFile(`${dir}/${commands[2]}`)
+        message.reply('圖片刪除成功')
+      } else { message.reply(`圖片指令名稱錯誤，找不到 ${commands[1]} 資料夾`) }
+    } catch (error) {
+      console.log(error)
+      message.reply(error.message)
+    }
   }
 }
