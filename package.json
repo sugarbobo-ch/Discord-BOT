@@ -18,10 +18,13 @@
     "forever": "^1.0.0",
     "fs": "^0.0.1-security",
     "https": "^1.0.0",
+    "moment": "^2.29.1",
     "path": "^0.12.7"
   },
   "nodemonConfig": {
-    "ignore": ["config/*.json"]
+    "ignore": [
+      "config/*.json"
+    ]
   },
   "scripts": {
     "dev": "nodemon ./index.js",

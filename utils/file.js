@@ -82,5 +82,16 @@ module.exports = {
   },
   checkFileDirectoryIsExist: (dir) => {
     return fs.existsSync(dir)
+  },
+  removeFile: (path) => {
+    return new Promise((resolve, reject) => {
+      fs.unlink(path, (error) => {
+        if (error) {
+          reject(new Error('無此檔案，請確認檔案名稱與類型正確'))
+        } else {
+          resolve()
+        }
+      })
+    })
   }
 }
