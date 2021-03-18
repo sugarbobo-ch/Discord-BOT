@@ -46,7 +46,13 @@ module.exports = {
     )
   },
   getCommandName: message => {
-    if (module.exports.checkMentions(message) || module.exports.checkEmoji(message)) { return message }
+    if (module.exports.checkEmoji(message)) { return message }
+    if (module.exports.checkMentions(message)) {
+      const text = message.content === undefined ? message : message.content
+      if (typeof (text) === 'string' && text.charAt(0) === '<') {
+        return message
+      }
+    }
     const content = message.content.substr(1)
     const commands = content.split(' ')
     return commands[0].toLowerCase()
@@ -69,6 +75,7 @@ module.exports = {
     }
     if (commands.length >= 3) {
       const action = command
+      console.log(1)
       if (action === 'add' || action === 'edit') {
         command = (module.exports.checkMentions(commands[1]) || module.exports.checkEmoji(commands[1])) ? commands[1] : commands[1].toLowerCase().trimStart()
         if (command.length === 0) {
@@ -204,16 +211,17 @@ module.exports = {
     embed.addField('一般指令：', keyFlag ? keyString : '無指令') */
     message.channel.send(embed)
   },
-  addImageCommand: (message, command) => {
+  addImageCommand: async (message, command) => {
     const content = message.content.substr(1)
     const commands = content.split(' ')
-    fileManager.downloadFile(
+    await fileManager.downloadFile(
       commands[2],
       commands[1],
-      result => {
-        message.reply('圖片新增成功')
+      error => {
+        console.log(error)
       }
     )
+    message.reply('圖片新增成功')
   },
   getImageCommand: (message, command) => {
     const content = message.content.substr(1)
@@ -285,9 +293,12 @@ module.exports = {
     const commands = content.split(' ')
     const folderName = commands[1].toLowerCase()
     const dir = 'assets/images/' + folderName + '/'
+    const targetStr = commands[2]
+    const n = targetStr.lastIndexOf('/')
+    const filePath = targetStr.substring(n + 1)
     try {
       if (fileManager.checkFileDirectoryIsExist(dir)) {
-        await fileManager.removeFile(`${dir}/${commands[2]}`)
+        await fileManager.removeFile(`${dir}/${filePath}`)
         message.reply('圖片刪除成功')
       } else { message.reply(`圖片指令名稱錯誤，找不到 ${commands[1]} 資料夾`) }
     } catch (error) {

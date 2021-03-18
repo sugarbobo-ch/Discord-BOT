@@ -55,6 +55,7 @@ client.on('message', message => {
     nsfwCtrl.getPixivURL(message)
     nsfwCtrl.getHentaiURL(message)
     nsfwCtrl.getWnacgURL(message)
+    nsfwCtrl.detectNsfwImage(message)
     userCtrl.keep(message)
     userCtrl.getKeepsList(message)
     rollCallCtrl.getRollCallCommand(message)

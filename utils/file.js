@@ -27,6 +27,10 @@ const checkURL = (url) => {
   return (url.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/) != null)
 }
 
+const isGif = (url) => {
+  return (url.match(/\.(gif|GIF)$/) != null)
+}
+
 module.exports = {
   readFileSync: (filePath) => {
     try {
@@ -38,6 +42,9 @@ module.exports = {
       if (!fs.existsSync(dir)) { fs.mkdirSync(dir) }
       return {}
     }
+  },
+  readBufferSyncFromFile: (filePath) => {
+    return fs.readFileSync(filePath)
   },
   writeFileSync: (filePath, obj) => {
     try {
@@ -52,26 +59,30 @@ module.exports = {
       fs.writeFileSync(filePath, data)
     }
   },
-  downloadFile: (url, dest, cb) => {
-    try {
-      if (!checkURL(url)) { return }
-      if (!isDirVaild(dest)) { return }
-      dest = 'assets/images/' + dest + '/'
-      if (!fs.existsSync(dest)) { fs.mkdirSync(dest) }
-      const fileDest = dest + uuidv4() + url.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/)[0]
-      var file = fs.createWriteStream(fileDest)
-      https.get(url, function (response) {
-        response.pipe(file)
-        file.on('finish', function () {
-          file.close(cb)
+  downloadFile: async (url, dest, cb) => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!checkURL(url)) { return }
+        if (!isDirVaild(dest)) { return }
+        dest = 'assets/images/' + dest + '/'
+        if (!fs.existsSync(dest)) { fs.mkdirSync(dest) }
+        const fileDest = dest + uuidv4() + url.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/)[0]
+        var file = fs.createWriteStream(fileDest)
+        https.get(url, function (response) {
+          response.pipe(file)
+          file.on('finish', function () {
+            file.close()
+            resolve(fileDest)
+          })
+        }).on('error', function (err) {
+          fs.unlink(fileDest)
+          if (cb) cb(err.message)
         })
-      }).on('error', function (err) {
-        fs.unlink(fileDest)
-        if (cb) cb(err.message)
-      })
-    } catch (error) {
-      console.log(error)
-    }
+      } catch (error) {
+        console.log(error)
+        reject(error)
+      }
+    })
   },
   getRandomFile: (type, dir) => {
     dir = 'assets/' + type + '/' + dir + '/'
@@ -93,5 +104,7 @@ module.exports = {
         }
       })
     })
-  }
+  },
+  isGif,
+  isImage: checkURL
 }
