@@ -3,7 +3,7 @@ const path = require('../config/path.json')
 const auth = require('../config/auth.json')
 const fileManager = require('../utils/file.js')
 const clientManager = require('../utils/client.js')
-const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'delimg', 'send', 'reset']
+const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'delimg', 'send', 'reset', '大全']
 
 var responseDict = []
 var serversList = []
@@ -25,6 +25,9 @@ module.exports = {
     console.log(serversList)
   },
   checkPrefix: message => {
+    console.log(message.content, (message.content.charAt(0) === '!' ||
+    message.content.charAt(0) === '！') &&
+  message.content.length !== 1)
     return (
       (message.content.charAt(0) === '!' ||
         message.content.charAt(0) === '！') &&
@@ -34,7 +37,7 @@ module.exports = {
   checkMentions: message => {
     const text = message.content === undefined ? message : message.content
     if (typeof (text) !== 'string') return false
-    return /<@([^<>]{1,})>/g.test(text)
+    return /^<@([^<>]{1,})>/g.test(text)
   },
   checkEmoji: message => {
     const text = message.content === undefined ? message : message.content
@@ -75,7 +78,6 @@ module.exports = {
     }
     if (commands.length >= 3) {
       const action = command
-      console.log(1)
       if (action === 'add' || action === 'edit') {
         command = (module.exports.checkMentions(commands[1]) || module.exports.checkEmoji(commands[1])) ? commands[1] : commands[1].toLowerCase().trimStart()
         if (command.length === 0) {
@@ -112,6 +114,8 @@ module.exports = {
         }
       } else if (command === 'reset' && commands[1] === 'server') {
         module.exports.resetServer(server)
+      } else if (command === '大全') {
+        module.exports.searchAllCommands(message)
       }
     } else if (commands.length === 1) {
       if (command === 'list' || command === 'help') {
@@ -158,7 +162,6 @@ module.exports = {
         const regex = RegExp(/{}/g)
         const regex2 = RegExp(/%7B%7D/g)
         if (commandLineArray.length > 0 && (regex.test(plainText) || regex2.test(plainText))) {
-          console.log(1123)
           plainText = plainText.replace(regex, commandLineArray[0])
           plainText = plainText.replace(regex2, commandLineArray[0])
         }
@@ -189,6 +192,8 @@ module.exports = {
     embed.addField('!搜圖 [圖片網址]', '搜尋圖片')
     embed.addField('!keep [文字訊息]', '暫存文字訊息，最多10筆，超過後從最舊開始刪除，重開BOT後也會消失')
     embed.addField('!keeplist', '顯示使用者目前儲存的訊息')
+    embed.addField('!開始點名 !點名 !點名清單 !結束點名', '點名所有的功能')
+    embed.addField('!抽獎指令', '顯示抽獎功能之所有指令及介紹')
     embed.addField('特殊字元 {}', '在一般回覆訊息內加入 {} 可以使用變數功能，例如："!add 搜尋 https://www.google.com/search?q={}" << (這個符號是 {})，使用: !搜尋 Discord BOT會回覆 https://www.google.com/search?q=Discord')
     /*
     var keyString = ''
@@ -211,7 +216,7 @@ module.exports = {
     embed.addField('一般指令：', keyFlag ? keyString : '無指令') */
     message.channel.send(embed)
   },
-  addImageCommand: async (message, command) => {
+  addImageCommand: async (message) => {
     const content = message.content.substr(1)
     const commands = content.split(' ')
     await fileManager.downloadFile(
@@ -246,7 +251,9 @@ module.exports = {
             message.reply('發生錯誤，該指令尚未加入圖片')
             return
           }
+          console.time('Attachment constructor')
           const attachment = new Attachment(file)
+          console.timeEnd('Attachment constructor')
           // Send the attachment in the message channel with a content
           message.channel.send(attachment)
         } else { message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片') }
@@ -298,12 +305,46 @@ module.exports = {
     const filePath = targetStr.substring(n + 1)
     try {
       if (fileManager.checkFileDirectoryIsExist(dir)) {
-        await fileManager.removeFile(`${dir}/${filePath}`)
+        await fileManager.removeFile(dir, filePath, folderName)
         message.reply('圖片刪除成功')
       } else { message.reply(`圖片指令名稱錯誤，找不到 ${commands[1]} 資料夾`) }
     } catch (error) {
       console.log(error)
       message.reply(error.message)
     }
+  },
+  searchAllCommands: message => {
+    const content = message.content.substr(1)
+    const commands = content.split(' ')
+    const server = message.guild.id
+    let str = ''
+    let count = 0
+    let totalCommandsCount = 0
+    for (const [key] of Object.entries(responseDict[server])) {
+      if (key.includes(commands[1].toLowerCase())) {
+        count += 1
+        totalCommandsCount += 1
+        const tempStr = str + key
+        if (tempStr.length > 1950) {
+          message.channel.send(tempStr)
+          str = ''
+          continue
+        }
+        if (count === 5) {
+          str += key + '\n'
+          count = 0
+        } else {
+          str += key + '\t'
+        }
+      }
+    }
+    if (str.length > 0) {
+      if (count === 0) {
+        str += `\n共 ${totalCommandsCount} 個指令\n`
+      } else {
+        str += `\n\n共 ${totalCommandsCount} 個指令\n`
+      }
+      message.channel.send(str)
+    } else message.channel.send('查無結果')
   }
 }

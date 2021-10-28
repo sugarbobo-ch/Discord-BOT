@@ -12,12 +12,16 @@ module.exports = {
   keep: (message) => {
     const content = message.content.substr(1)
     const commands = content.split(' ')
-    if (commands.length === 2) {
+    if (commands.length >= 2) {
       if (getCommandName(message) === 'keep') {
+        let str = ''
+        for (let i = 1; i < commands.length; i++) {
+          str += commands[i]
+        }
         if (keepDict[message.author.id] === undefined) {
-          keepDict[message.author.id] = [commands[1]]
+          keepDict[message.author.id] = [str]
         } else {
-          keepDict[message.author.id].unshift(commands[1])
+          keepDict[message.author.id].unshift(str)
           if (keepDict[message.author.id].length > 10) {
             keepDict[message.author.id].pop()
           }
