@@ -2,6 +2,7 @@
 A customize Discord BOT for adding commands and random images 
 
 ## Setup
+It's recommanded to use Node.js 14.
 
 ### Installation
 ```
