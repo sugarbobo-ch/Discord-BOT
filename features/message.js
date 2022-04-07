@@ -142,11 +142,9 @@ module.exports = {
       return
     }
     if (responseDict[server] === undefined) {
-      // message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
-      var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
-      clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
       return
     }
+
     if (command in responseDict[server]) {
       if (responseDict[server][command] === '隨機圖片' || responseDict[server][command] === '隨機媒體') {
         return
@@ -236,11 +234,9 @@ module.exports = {
       command = module.exports.getCommandName(message)
     }
     if (responseDict[server] === undefined) {
-      // message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
-      var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
-      clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
       return
     }
+
     if (command in responseDict[server]) {
       const folderName = commands[0].toLowerCase()
       if (responseDict[server][folderName] === '隨機圖片') {
@@ -268,11 +264,9 @@ module.exports = {
       command = module.exports.getCommandName(message)
     }
     if (responseDict[server] === undefined) {
-      // message.channel.send('此伺服器重置後尚未進行設定，請聯絡：可可撥#9487')
-      var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
-      clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
       return
     }
+
     if (command in responseDict[server]) {
       const folderName = commands[0].toLowerCase()
       if (responseDict[server][folderName] === '隨機媒體') {
