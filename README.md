@@ -19,7 +19,7 @@ yarn install
 2. `config/servers.json`
 
 ```
-[ "<SERVER_ID_1>", "SERVER_ID_2"]
+["<SERVER_ID_1>", "SERVER_ID_2"]
 ```
 
 ### Deploy
