@@ -142,7 +142,7 @@ module.exports = {
       return
     }
     if (responseDict[server] === undefined) {
-      message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
+      // message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
       var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
       clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
       return
@@ -236,7 +236,7 @@ module.exports = {
       command = module.exports.getCommandName(message)
     }
     if (responseDict[server] === undefined) {
-      message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
+      // message.channel.send('此伺服器重置後尚未進行設定，請先使用!reset server')
       var log = `[${message.channel.name}] ${message.guild} - ${message.author.username}: ${message.content}`
       clientManager.client.channels.get(auth.backupChannelId).send('<@251533592470093824> ' + log)
       return

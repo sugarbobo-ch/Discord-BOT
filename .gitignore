@@ -3,9 +3,9 @@ assets/images/*
 !assets/images/.gitkeep
 assets/media/*
 !assets/media/.gitkeep
-config/servers
-config/servers.json
-config/commands.json
+config/servers/*
+!config/servers/.gitkeep
 config/auth.json
+config/servers.json
 logs/*
 iisnode/*
