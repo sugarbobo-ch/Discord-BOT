@@ -37,7 +37,7 @@ module.exports = {
   checkMentions: message => {
     const text = message.content === undefined ? message : message.content
     if (typeof (text) !== 'string') return false
-    return /^<@([^<>]{1,})>/g.test(text)
+    return /<@([^<>]{1,})>/g.test(text)
   },
   checkEmoji: message => {
     const text = message.content === undefined ? message : message.content

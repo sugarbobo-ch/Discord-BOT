@@ -6,6 +6,7 @@ const getRepeatedMessageArray = (messageQueue, text) => {
 
 module.exports = {
   sendRepeatedMessage (message) {
+    if (!message.guild) return
     const serverId = message.guild.id
     const channelId = message.channel
     const text = message.content
