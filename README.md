@@ -34,7 +34,7 @@ To prevent someone from sharing the BOT link without consent, use `!reset server
 Use `!` as command prefix.
 
 There are serveral features in this BOT:
-1. Customize commands, including using `{}` as parameter in response message: `!add !edit !remove`. And `@` can be a command response if you mention someone
+1. Customize commands, including using `{}` as parameter in response message: `!add {command} {responseMessage}`, `!edit {command} {responseMessage}`, `!remove  {command}`. And `@` can be a command response if you mention someone
 2. Ramdom images/media pick: `!add {folderName} 隨機圖片`, `!addimg {folderName} {imageUrl}`, `!{folderName}`, `!delimg {folderName} {imageUrl}`
 3. Repeat messeage: 5 times same messages in same chaneel BOT will reapeat it.
 4. Rollcall: `!開始點名`, `!點名`, `!結束點名`, `!點名清單`
