@@ -38,5 +38,5 @@ There are serveral features in this BOT:
 2. Ramdom images/media pick: `!add {folderName} 隨機圖片`, `!addimg {folderName} {imageUrl}`, `!{folderName}`, `!delimg {folderName} {imageUrl}`
 3. Repeat messeage: 5 times same messages in same chaneel BOT will reapeat it.
 4. Rollcall: `!開始點名`, `!點名`, `!結束點名`, `!點名清單`
-5. Lottery: `!開始抽獎 {name} {minutes}`, `!抽獎`, `!開講`, `!開非洲獎`, `!結束抽獎`...
+5. Lottery: `!開始抽獎 {name} {minutes}`, `!抽獎`, `!開獎`, `!開非洲獎`, `!結束抽獎`...
 6. NSFW, links, image detected...: `#228922`, `!god 228922`, `!nsfw {url}`, `!神的語言`
