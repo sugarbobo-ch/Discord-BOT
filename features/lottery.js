@@ -1,4 +1,4 @@
-const { RichEmbed } = require('discord.js')
+const { EmbedBuilder } = require('discord.js')
 const moment = require('moment')
 
 const lotteryDict = {}
@@ -78,7 +78,7 @@ function handleCreateLotteryCommand (message) {
   const channel = message.channel.id
   const userId = message.author.id
   const title = commands[1]
-  const time = commands[2] || 5
+  const time = commands[2] >= 1 ? commands[2] : 1 || 5
   const config = { server, channel, userId, title, time }
   if (isLotteryExist(config)) {
     message.reply('此頻道內已有建立好的抽獎，請使用「!開獎 {抽出的人數(不填寫預設為1)}」進行抽獎，請注意抽獎完後抽到的人會自動被移出名單內')
@@ -122,8 +122,7 @@ function handleJoinLottery (message) {
       }
     }
 
-    replyMessage.join('；')
-    message.reply(replyMessage)
+    message.reply(replyMessage.join('；'))
   } else {
     message.reply('目前沒有進行中的抽獎')
   }
@@ -163,12 +162,12 @@ function handleChooseWinner (message) {
       const selected = lottery.list.splice(0, winnerCount)
       const winners = selected.map(member => member.user)
       winners.forEach(user => {
-        const embed = new RichEmbed()
+        const embed = new EmbedBuilder()
           .setTitle(user.username)
           .setAuthor(`${lottery.title} 中獎名單`)
           .setDescription(`恭喜幸運兒 ${user} 中獎！`)
           .setThumbnail(user.displayAvatarURL)
-        message.channel.send(embed)
+        message.channel.send({ embeds: [embed] })
       })
     }
   } else {
@@ -217,24 +216,37 @@ function handleDisplayLotteryList (message) {
 
     const setCount = lottery.list.length / 10
     if (lottery.list.length === 0) {
-      const embed = new RichEmbed()
+      const embed = new EmbedBuilder()
         .setTitle(`${lottery.title} 抽獎清單以及說明`)
         .setDescription(`抽獎於 ${lottery.time.format('HH:mm:ss')} 截止，截止後若要開獎，請使用「!開獎 {抽出的人數(不填寫預設為1)}」，最後舉辦人需要執行「!結束抽獎」刪除此抽獎活動`)
-        .addField('當前抽獎狀態', `${lottery.status === 'open' ? '開放參加中' : '已截止'}，抽獎名單內共 ${lottery.list.length} 人`)
-        .addField('當前抽獎名單為空', '請使用 !抽獎 參加此抽獎')
-      message.channel.send(embed)
+        .addFields({
+          name: '當前抽獎狀態',
+          value: `${lottery.status === 'open' ? '開放參加中' : '已截止'}，抽獎名單內共 ${lottery.list.length} 人`
+        }, {
+          name: '當前抽獎名單為空',
+          value: '請使用 !抽獎 參加此抽獎'
+        })
+      message.channel.send({ embeds: [embed] })
     } else {
       for (var i = 0; i < setCount; i++) {
-        const embed = new RichEmbed()
+        const embed = new EmbedBuilder()
           .setTitle(`${lottery.title} 抽獎清單以及說明`)
           .setDescription(`抽獎於 ${lottery.time.format('HH:mm:ss')} 截止，截止後若要開獎，請使用「!開獎 {抽出的人數(不填寫預設為1)}」，最後舉辦人需要執行「!結束抽獎」刪除此抽獎活動`)
-          .addField('當前抽獎狀態', `${lottery.status === 'open' ? '開放參加中' : '已截止'}，抽獎名單內共 ${lottery.list.length} 人`)
-          .addField('參加抽獎時間', '參加使用者名稱')
-
-        for (const member of lottery.list.slice(i * 10, (i + 1) * 10)) {
-          embed.addField(member.time.format('HH:mm:ss'), member.user)
-        }
-        message.channel.send(embed)
+          .addFields({
+            name: '當前抽獎狀態',
+            value: `${lottery.status === 'open' ? '開放參加中' : '已截止'}，抽獎名單內共 ${lottery.list.length} 人`
+          }, {
+            name: '參加抽獎時間',
+            value: '參加使用者名稱'
+          })
+        const list = lottery.list.slice(i * 10, (i + 1) * 10).map(
+          (member) => { return { name: member.time.format('HH:mm:ss').toString(), value: member.user.toString() } }
+        )
+        embed.addFields(...list)
+        // for (const member of lottery.list.slice(i * 10, (i + 1) * 10)) {
+        //   embed.addFields({ name: member.time.format('HH:mm:ss'), value: member.user })
+        // }
+        message.channel.send({ embeds: [embed] })
       }
     }
   } else {
@@ -243,16 +255,31 @@ function handleDisplayLotteryList (message) {
 }
 
 function handleDisplayHelp (message) {
-  const embed = new RichEmbed()
+  const embed = new EmbedBuilder()
     .setTitle('抽獎功能指令與介紹')
     .setDescription('{}括號內為可以設定的文字或數字，請直接替換成要設定的值')
-    .addField('開始抽獎', '!開始抽獎 {活動標題} {抽獎開放時間(選填欄位，單位為分鐘，預設為5分鐘)}，範例：!抽獎 贈送訂閱，同頻道只能同時存在一個抽獎，需等待前一抽獎活動結束後30分鐘才有權利刪除上一個活動，或是由上一個活動舉辦人執行 !結束抽獎')
-    .addField('抽獎', '!抽獎，使用此指令即可在時間內同頻道參加抽獎，唯獨舉辦人無法參加')
-    .addField('抽獎名單', '!抽獎名單，顯示抽獎名單')
-    .addField('開獎', '!開獎 {抽出的數量(選填欄位，預設為1)}，僅限舉辦人可以進行開獎，必須要在開放抽獎時間結束後才可以開獎')
-    .addField('結束抽獎', '!結束抽獎，僅限舉辦人操作，可刪除整個抽獎活動')
-    .addField('抽獎指令', '!抽獎指令，顯示所有可進行抽獎相關的指令')
-  message.channel.send(embed)
+    .addFields(
+      {
+        name: '開始抽獎',
+        value: '!開始抽獎 {活動標題} {抽獎開放時間(選填欄位，單位為分鐘，預設為5分鐘)}，範例：!抽獎 贈送訂閱，同頻道只能同時存在一個抽獎，需等待前一抽獎活動結束後30分鐘才有權利刪除上一個活動，或是由上一個活動舉辦人執行 !結束抽獎'
+      }
+      , {
+        name: '抽獎',
+        value: '!抽獎，使用此指令即可在時間內同頻道參加抽獎，唯獨舉辦人無法參加'
+      }, {
+        name: '抽獎名單',
+        value: '!抽獎名單，顯示抽獎名單'
+      }, {
+        name: '開獎',
+        value: '!開獎 {抽出的數量(選填欄位，預設為1)}，僅限舉辦人可以進行開獎，必須要在開放抽獎時間結束後才可以開獎'
+      }, {
+        name: '結束抽獎',
+        value: '!結束抽獎，僅限舉辦人操作，可刪除整個抽獎活動'
+      }, {
+        name: '抽獎指令',
+        value: '!抽獎指令，顯示所有可進行抽獎相關的指令'
+      })
+  message.channel.send({ embeds: [embed] })
 }
 
 module.exports = { processLotteryCommands }

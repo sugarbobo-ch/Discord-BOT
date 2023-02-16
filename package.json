@@ -14,14 +14,12 @@
     "eslint-plugin-standard": "^4.0.1"
   },
   "dependencies": {
-    "@tensorflow/tfjs-node": "^3.3.0",
     "axios": "^0.21.2",
-    "discord.js": "^11.5.1",
+    "discord.js": "^14.7.1",
     "forever": "^1.0.0",
     "fs": "^0.0.1-security",
     "https": "^1.0.0",
     "moment": "^2.29.1",
-    "nsfwjs": "^2.3.0",
     "path": "^0.12.7"
   },
   "nodemonConfig": {

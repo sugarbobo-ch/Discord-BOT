@@ -1,4 +1,4 @@
-const { RichEmbed } = require('discord.js')
+const { EmbedBuilder } = require('discord.js')
 const moment = require('moment')
 const serverRollcallDict = {}
 
@@ -43,13 +43,13 @@ function checkRollCall (message, forceReset) {
       const title = rollCall.title.length > 0 ? rollCall.title + ' ' : ''
       const setCount = rollCall.rollCallList.length / 10
       for (var i = 0; i < setCount; i++) {
-        const embed = new RichEmbed()
+        const embed = new EmbedBuilder()
           .setTitle(`${title}點名清單`)
           .setDescription('目前已點名的人，請注意是否有代點名的狀況出現：')
         for (const member of rollCall.rollCallList.slice(i * 10, (i + 1) * 10)) {
-          embed.addField(member.time, `${member.author} 點名：${member.text}`)
+          embed.addFields({ name: member.time, value: `${member.author} 點名：${member.text}` })
         }
-        message.channel.send(embed)
+        message.channel.send({ embeds: [embed] })
       }
     } else {
       if (rollCall.isOpen) {

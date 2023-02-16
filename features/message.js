@@ -1,4 +1,4 @@
-const { Attachment, RichEmbed } = require('discord.js')
+const { AttachmentBuilder, EmbedBuilder } = require('discord.js')
 const path = require('../config/path.json')
 const auth = require('../config/auth.json')
 const fileManager = require('../utils/file.js')
@@ -168,7 +168,7 @@ module.exports = {
     }
   },
   displayAvailableCommands: message => {
-    const embed = new RichEmbed()
+    const embed = new EmbedBuilder()
       .setTitle('指令列表')
       .setDescription('以下是可以使用的指令 (記得加空白，BOT沒反應代表格式錯誤或是BOT掛了)，[]代表請用自己的文字替代整個單字：')
 
@@ -212,7 +212,7 @@ module.exports = {
       keyString += '...'
     }
     embed.addField('一般指令：', keyFlag ? keyString : '無指令') */
-    message.channel.send(embed)
+    message.channel.send({ embeds: [embed] })
   },
   addImageCommand: async (message) => {
     const content = message.content.substr(1)
@@ -248,10 +248,10 @@ module.exports = {
             return
           }
           console.time('Attachment constructor')
-          const attachment = new Attachment(file)
+          const attachment = new AttachmentBuilder(file)
           console.timeEnd('Attachment constructor')
           // Send the attachment in the message channel with a content
-          message.channel.send(attachment)
+          message.channel.send({ files: [attachment] })
         } else { message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片') }
       }
     }
@@ -277,9 +277,9 @@ module.exports = {
             message.reply('發生錯誤，請確定該指令是設定在隨機圖片且有加入圖片')
             return
           }
-          const attachment = new Attachment(file)
+          const attachment = new AttachmentBuilder(file)
           // Send the attachment in the message channel with a content
-          message.channel.send(attachment)
+          message.channel.send({ files: [attachment] })
         }
       }
     }
