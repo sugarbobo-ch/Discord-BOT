@@ -2,14 +2,15 @@
 A customize Discord BOT for adding commands and random images 
 
 ## Setup
-It's recommanded to use Node.js 14.
+It is recommended to use Node.js 16 or newer (fully compatible with Node 18, 20, 22).
 
 ### Installation
-```
-yarn install
+Due to `ignore-scripts=true` in `\.npmrc`, you must install with `--ignore-scripts=false` to compile the native SQLite module:
+```bash
+npm install --legacy-peer-deps --ignore-scripts=false
 ```
 
-### Setup json files
+### Setup Files
 1. `config/auth.json`
 ```json
 {
@@ -19,10 +20,12 @@ yarn install
   "chatMemoryLimit": 10
 }
 ```
-2. `config/servers.json`
 
-```json
-["<SERVER_ID_1>", "<SERVER_ID_2>"]
+2. **Database Setup / Migration**
+- **New setup**: The SQLite database will be initialized automatically in `config/bobo.db` upon starting.
+- **Migration (upgrading from old JSON storage)**: Put your old `config/servers.json` and `config/servers/*.json` in place, then run:
+```bash
+npm run migrate
 ```
 
 ### Deploy

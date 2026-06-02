@@ -1,21 +1,15 @@
 import path from 'path'
+import Database from 'better-sqlite3'
 
-let DatabaseSync: any
-try {
-  DatabaseSync = eval("require('node:sqlite')").DatabaseSync
-} catch (err) {
-  console.error('Failed to load native node:sqlite:', err)
-}
+let dbConnection: Database.Database | null = null
 
-let dbConnection: any = null
-
-export function getDb(): any {
+export function getDb(): Database.Database {
   if (dbConnection) return dbConnection
 
-  dbConnection = new DatabaseSync(path.join(process.cwd(), 'config', 'bobo.db'))
+  dbConnection = new Database(path.join(process.cwd(), 'config', 'bobo.db'))
 
   // 啟用外鍵約束
-  dbConnection.exec('PRAGMA foreign_keys = ON;')
+  dbConnection.pragma('foreign_keys = ON')
 
   // 初始化資料表
   dbConnection.exec(`
@@ -34,3 +28,4 @@ export function getDb(): any {
 
   return dbConnection
 }
+
