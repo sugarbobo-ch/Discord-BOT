@@ -31,6 +31,32 @@ const isDiscordUrlExpired = (urlStr: string): boolean => {
   return false
 }
 
+/**
+ * 檢查是否為圖片連結
+ */
+const isImageUrl = (urlStr: string): boolean => {
+  try {
+    const url = new URL(urlStr)
+    const ext = url.pathname.split('.').pop()?.toLowerCase()
+    return !!(ext && ['jpeg', 'jpg', 'gif', 'png', 'webp', 'heic', 'heif'].includes(ext))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 檢查是否為影片連結
+ */
+const isVideoUrl = (urlStr: string): boolean => {
+  try {
+    const url = new URL(urlStr)
+    const ext = url.pathname.split('.').pop()?.toLowerCase()
+    return !!(ext && ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv'].includes(ext))
+  } catch {
+    return false
+  }
+}
+
 
 export class BoboCommand implements Command {
   public names = ['bobo']
@@ -88,8 +114,7 @@ export class BoboCommand implements Command {
               if (urlMatch) {
                 let found = false
                 for (const url of urlMatch) {
-                  const isImg = url.match(/\.(jpeg|jpg|gif|png|webp|heic|heif|JEPG|JPG|GIF|PNG|WEBP|HEIC|HEIF)$/) != null
-                  if (isImg && !isDiscordUrlExpired(url)) {
+                  if (isImageUrl(url) && !isDiscordUrlExpired(url)) {
                     imagesToDownload.push({ msgId: msg.id, url })
                     found = true
                     break
@@ -100,7 +125,7 @@ export class BoboCommand implements Command {
             }
 
             // 依序 [舊 -> 新] 下載以與 parts 編號對應
-            const downloadedHistoryImagesMap = new Map<string, { buffer: Buffer; mimeType: string; labelIndex: number }>()
+            const downloadedHistoryImagesMap = new Map<string, { buffer: Buffer; mimeType: string; labelIndex: number; url: string }>()
             let labelIdx = 1
 
             for (const item of imagesToDownload.reverse()) {
@@ -116,7 +141,8 @@ export class BoboCommand implements Command {
                 const imgObj = {
                   buffer: Buffer.from(response.data),
                   mimeType,
-                  labelIndex: labelIdx++
+                  labelIndex: labelIdx++,
+                  url: item.url
                 }
                 downloadedHistoryImagesMap.set(item.msgId, imgObj)
                 historyImagesPayload.push({ buffer: imgObj.buffer, mimeType: imgObj.mimeType })
@@ -136,7 +162,18 @@ export class BoboCommand implements Command {
               .map((msg: Message, i) => {
                 const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
                 const secondsAgo = nowSeconds - msgTimeSeconds
-                const weight = ((i + 1) / k).toFixed(2)
+                
+                // 計算權重：最新一筆為 1.00，其餘依位置與時間衰減 (離當前時間越遠，分數調得越低)
+                let calculatedWeight = Math.pow((i + 1) / k, 2)
+                if (i === k - 1) {
+                  calculatedWeight = 1.0
+                } else {
+                  // 對於較舊的訊息，再額外乘以時間衰減係數（越久遠衰減越多，30 分鐘衰減常數，最低保留 0.1 避免完全歸零）
+                  const timeDecay = Math.max(0.1, Math.exp(-secondsAgo / 1800))
+                  calculatedWeight = calculatedWeight * timeDecay
+                }
+                const weight = Math.max(0.01, calculatedWeight).toFixed(2)
+
                 const authorName = msg.member?.displayName || msg.author.username
                 const sender = msg.author.id === message.client.user?.id ? '波波' : authorName
 
@@ -145,23 +182,42 @@ export class BoboCommand implements Command {
                 // 優先使用已下載的標記
                 const downloadedImg = downloadedHistoryImagesMap.get(msg.id)
                 if (downloadedImg) {
-                  processedContent = `[歷史圖片 ${downloadedImg.labelIndex}] ${processedContent}`.trim()
-                } else {
-                  // 未下載或超出上限則標為純文字提示
-                  const imageAttachments = msg.attachments.filter(att => att.contentType?.startsWith('image/'))
-                  if (imageAttachments.size > 0) {
-                    processedContent = `[圖片附件] ${processedContent}`.trim()
-                  }
+                  processedContent = `[歷史圖片 ${downloadedImg.labelIndex} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
+                }
 
-                  const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
-                  if (urlMatch) {
-                    urlMatch.forEach(url => {
-                      const isImg = url.match(/\.(jpeg|jpg|gif|png|webp|heic|heif|JEPG|JPG|GIF|PNG|WEBP|HEIC|HEIF)$/) != null
-                      if (isImg) {
-                        processedContent = processedContent.replace(url, `[圖片連結]`)
-                      }
-                    })
+                // 處理所有附件 (圖片與影片)
+                const mediaAttachmentsInfo: string[] = []
+                msg.attachments.forEach(att => {
+                  const isImage = att.contentType?.startsWith('image/')
+                  const isVideo = att.contentType?.startsWith('video/')
+                  if (isImage) {
+                    if (downloadedImg && downloadedImg.url === att.url) {
+                      return // 已被 downloadedImg 包含，不重複處理
+                    }
+                    mediaAttachmentsInfo.push(`[圖片附件 (由 ${sender} 上傳): ${att.url}]`)
+                  } else if (isVideo) {
+                    mediaAttachmentsInfo.push(`[影片附件 (由 ${sender} 上傳): ${att.url}]`)
                   }
+                })
+
+                // 處理內文中的 URL
+                const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
+                if (urlMatch) {
+                  urlMatch.forEach(url => {
+                    if (isImageUrl(url)) {
+                      if (downloadedImg && downloadedImg.url === url) {
+                        return // 已被 downloadedImg 包含，不重複處理
+                      }
+                      processedContent = processedContent.replace(url, `[圖片連結 (由 ${sender} 分享): ${url}]`)
+                    } else if (isVideoUrl(url)) {
+                      processedContent = processedContent.replace(url, `[影片連結 (由 ${sender} 分享): ${url}]`)
+                    }
+                  })
+                }
+
+                // 若有其他媒體附件，附加在內文後面
+                if (mediaAttachmentsInfo.length > 0) {
+                  processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
                 }
 
                 return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}] 內容: "${processedContent}"`
@@ -193,8 +249,7 @@ export class BoboCommand implements Command {
         const urlMatch = prompt.match(/https?:\/\/\S+/i)
         if (urlMatch) {
           const url = urlMatch[0]
-          const isImageUrl = url.match(/\.(jpeg|jpg|gif|png|webp|heic|heif|JEPG|JPG|GIF|PNG|WEBP|HEIC|HEIF)$/) != null
-          if (isImageUrl) {
+          if (isImageUrl(url)) {
             try {
               const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 })
               const contentType = response.headers['content-type']

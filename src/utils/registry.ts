@@ -11,6 +11,10 @@ export class CommandRegistry {
     })
   }
 
+  public get(name: string): Command | undefined {
+    return this.commands.get(name.toLowerCase())
+  }
+
   public async execute(message: Message): Promise<void> {
     const commandName = getCommandName(message)
     const command = this.commands.get(commandName)

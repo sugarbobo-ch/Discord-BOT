@@ -49,6 +49,22 @@ client.on('messageCreate', async (message: Message) => {
 
   let result = messageCtrl.checkPrefix(message)
   if (!result) {
+    // 檢查是否直接 tag / mention 機器人
+    if (client.user && message.mentions.has(client.user)) {
+      const boboCmd = commandRegistry.get('bobo')
+      if (boboCmd) {
+        const botMentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g')
+        const cleanContent = message.content.replace(botMentionRegex, '').trim()
+        const args = cleanContent.split(/\s+/).filter(Boolean)
+        try {
+          await boboCmd.execute(message, args)
+        } catch (error) {
+          console.error('Error executing bobo command on mention:', error)
+        }
+        return
+      }
+    }
+
     result = messageCtrl.checkMentions(message) || messageCtrl.checkEmoji(message)
     repeatCtrl.sendRepeatedMessage(message)
 
