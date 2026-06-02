@@ -4,6 +4,34 @@ import { chatWithBobo } from '../utils/gemini'
 import auth from '../../config/auth.json'
 import axios from 'axios'
 
+/**
+ * 檢查 Discord 附件連結是否已過期或無效
+ */
+const isDiscordUrlExpired = (urlStr: string): boolean => {
+  try {
+    const url = new URL(urlStr)
+    const isDiscordCdn = url.host.includes('discordapp.com') || url.host.includes('discordapp.net')
+    if (!isDiscordCdn) {
+      return false
+    }
+
+    // Discord 附件連結通常路徑包含 /attachments/
+    if (url.pathname.includes('/attachments/')) {
+      const ex = url.searchParams.get('ex')
+      if (!ex) {
+        // 沒有簽名參數，在 Discord CDN 機制下為已過期/無效連結
+        return true
+      }
+      const expireTimestamp = parseInt(ex, 16) * 1000
+      return Date.now() > expireTimestamp
+    }
+  } catch {
+    // 網址解析失敗，不阻擋以進行一般請求嘗試
+  }
+  return false
+}
+
+
 export class BoboCommand implements Command {
   public names = ['bobo']
 
@@ -49,7 +77,7 @@ export class BoboCommand implements Command {
               const imageAttachments = msg.attachments.filter(att => att.contentType?.startsWith('image/'))
               if (imageAttachments.size > 0) {
                 const firstAtt = imageAttachments.first()
-                if (firstAtt) {
+                if (firstAtt && !isDiscordUrlExpired(firstAtt.url)) {
                   imagesToDownload.push({ msgId: msg.id, url: firstAtt.url })
                   continue
                 }
@@ -61,7 +89,7 @@ export class BoboCommand implements Command {
                 let found = false
                 for (const url of urlMatch) {
                   const isImg = url.match(/\.(jpeg|jpg|gif|png|webp|heic|heif|JEPG|JPG|GIF|PNG|WEBP|HEIC|HEIF)$/) != null
-                  if (isImg) {
+                  if (isImg && !isDiscordUrlExpired(url)) {
                     imagesToDownload.push({ msgId: msg.id, url })
                     found = true
                     break
@@ -93,7 +121,13 @@ export class BoboCommand implements Command {
                 downloadedHistoryImagesMap.set(item.msgId, imgObj)
                 historyImagesPayload.push({ buffer: imgObj.buffer, mimeType: imgObj.mimeType })
               } catch (downloadError: any) {
-                console.warn(`Failed to download history image from ${item.url}:`, downloadError.message)
+                const status = downloadError.response?.status
+                if (status === 404 || status === 403) {
+                  // Discord CDN 連結失效或已被刪除，此為預期現象，使用 info 記錄以保持 log 清潔
+                  console.info(`History image from ${item.url} is no longer accessible (HTTP ${status}).`)
+                } else {
+                  console.warn(`Failed to download history image from ${item.url}:`, downloadError.message)
+                }
               }
             }
 
@@ -181,7 +215,24 @@ export class BoboCommand implements Command {
       }
 
       const reply = await chatWithBobo(prompt, message.author.id, channelHistoryContext, image, historyImagesPayload)
-      message.reply(reply)
+      
+      // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
+      if (reply.length <= 2000) {
+        await message.reply(reply)
+      } else {
+        const CHUNK_SIZE = 1900
+        const chunks: string[] = []
+        for (let i = 0; i < reply.length; i += CHUNK_SIZE) {
+          chunks.push(reply.substring(i, i + CHUNK_SIZE))
+        }
+
+        if (chunks.length > 0) {
+          const firstMsg = await message.reply(chunks[0])
+          for (let i = 1; i < chunks.length; i++) {
+            await (firstMsg.channel as any).send(chunks[i])
+          }
+        }
+      }
     } catch (error: any) {
       console.error('Error in BoboCommand:', error.message)
       message.reply('波波出錯了，無法回應。')

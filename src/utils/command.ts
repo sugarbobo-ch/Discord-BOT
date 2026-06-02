@@ -1,11 +1,6 @@
 import { Message } from 'discord.js'
 
 export const checkPrefix = (message: Message): boolean => {
-  console.log(
-    message.content,
-    (message.content.charAt(0) === '!' || message.content.charAt(0) === '！') &&
-      message.content.length !== 1
-  )
   return (
     (message.content.charAt(0) === '!' || message.content.charAt(0) === '！') &&
     message.content.length !== 1

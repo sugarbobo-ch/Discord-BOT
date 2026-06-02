@@ -6,6 +6,21 @@ const getApiKey = (): string => {
 }
 
 /**
+ * 提取 Gemini 回應的文字內容（過濾掉思考過程 thought）
+ */
+const getResponseText = (response: any): string => {
+  const candidate = response.data?.candidates?.[0]
+  if (!candidate || !candidate.content || !candidate.content.parts) {
+    return ''
+  }
+  return candidate.content.parts
+    .filter((part: any) => !part.thought)
+    .map((part: any) => part.text || '')
+    .join('')
+    .trim()
+}
+
+/**
  * 檢查圖片是否包含 NSFW 內容 (使用 Gemini Multimodal)
  */
 export const checkImageNSFW = async (
@@ -42,7 +57,10 @@ export const checkImageNSFW = async (
           }
         ],
         generationConfig: {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingLevel: 'MINIMAL'
+          }
         }
       },
       {
@@ -50,13 +68,20 @@ export const checkImageNSFW = async (
       }
     )
 
-    const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text
+    const resultText = getResponseText(response)
     if (resultText) {
-      const result = JSON.parse(resultText.trim())
+      const result = JSON.parse(resultText)
       return {
         nsfw: !!result.nsfw,
         reason: result.reason || ''
       }
+    } else {
+      const candidate = response.data?.candidates?.[0]
+      console.warn(
+        `[Gemini NSFW Check Empty Response]\n` +
+        `- Finish Reason: ${candidate?.finishReason || 'UNKNOWN'}\n` +
+        `- Full Response: ${JSON.stringify(response.data || {})}`
+      )
     }
   } catch (error: any) {
     console.error('Gemini NSFW Check Error:', error.message)
@@ -194,13 +219,29 @@ export const chatWithBobo = async (
           {
             parts
           }
-        ]
+        ],
+        generationConfig: {
+          thinkingConfig: {
+            thinkingLevel: 'MINIMAL'
+          }
+        }
       },
       { timeout: 30000 }
     )
 
-    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text
-    return text ? text.trim() : '波波現在頭有點痛，等下再聊。'
+    const text = getResponseText(response)
+    if (!text) {
+      const candidate = response.data?.candidates?.[0]
+      const finishReason = candidate?.finishReason || 'UNKNOWN'
+      const promptFeedback = response.data?.promptFeedback
+      console.warn(
+        `[Gemini Chat API Empty Response]\n` +
+        `- Finish Reason: ${finishReason}\n` +
+        `- Prompt Feedback: ${JSON.stringify(promptFeedback || {})}\n` +
+        `- Full Response: ${JSON.stringify(response.data || {})}`
+      )
+    }
+    return text || '波波現在頭有點痛，等下再聊。'
   } catch (error: any) {
     console.error('Gemini Chat Error:', error.message)
     const status = error.response?.status
@@ -254,13 +295,26 @@ export const roastTypo = async (content: string, typo: string, targetId: string)
               }
             ]
           }
-        ]
+        ],
+        generationConfig: {
+          thinkingConfig: {
+            thinkingLevel: 'MINIMAL'
+          }
+        }
       },
       { timeout: 10000 }
     )
 
-    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text
-    return text ? text.trim() : null
+    const text = getResponseText(response)
+    if (!text) {
+      const candidate = response.data?.candidates?.[0]
+      console.warn(
+        `[Gemini Roast Typo Empty Response]\n` +
+        `- Finish Reason: ${candidate?.finishReason || 'UNKNOWN'}\n` +
+        `- Full Response: ${JSON.stringify(response.data || {})}`
+      )
+    }
+    return text || null
   } catch (error) {
     console.error('Gemini Roast Typo Error:', error)
     return null
