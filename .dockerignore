@@ -1,0 +1,15 @@
+node_modules
+dist
+npm-debug.log*
+.git
+.gitignore
+.vscode
+.idea
+coverage
+*.md
+!README.md
+tests
+.eslintrc.json
+.prettierrc
+.prettierignore
+.npmrc
