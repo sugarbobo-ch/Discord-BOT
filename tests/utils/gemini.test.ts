@@ -99,7 +99,7 @@ describe('Gemini Utility Tests', () => {
     
     expect(reply).toBe('知道了，剛才聊天內容我有記住！')
     expect(axios.post).toHaveBeenCalledWith(
-      expect.stringContaining('gemini-2.5-flash:generateContent'),
+      expect.stringContaining('gemma-4-31b-it:generateContent'),
       expect.objectContaining({
         contents: [
           {
@@ -136,7 +136,7 @@ describe('Gemini Utility Tests', () => {
 
     expect(reply).toBe('看到了，這是一張測試圖片。')
     expect(axios.post).toHaveBeenCalledWith(
-      expect.stringContaining('gemini-2.5-flash:generateContent'),
+      expect.stringContaining('gemma-4-31b-it:generateContent'),
       expect.objectContaining({
         contents: [
           {
@@ -185,7 +185,7 @@ describe('Gemini Utility Tests', () => {
 
     expect(reply).toBe('看到了，歷史圖片與目前圖片都收到了！')
     expect(axios.post).toHaveBeenCalledWith(
-      expect.stringContaining('gemini-2.5-flash:generateContent'),
+      expect.stringContaining('gemma-4-31b-it:generateContent'),
       expect.objectContaining({
         contents: [
           {
