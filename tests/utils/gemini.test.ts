@@ -1,13 +1,19 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
 import { checkImageNSFW, chatWithBobo, roastTypo } from '../../src/utils/gemini'
+import yahooFinance from 'yahoo-finance2'
 
 vi.mock('axios')
+vi.mock('yahoo-finance2')
 
 describe('Gemini Utility Tests', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     process.env.GEMINI_API_KEY = 'test_key'
+    vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValue({
+      regularMarketPrice: 600,
+      currency: 'TWD'
+    } as any)
   })
 
   test('checkImageNSFW should return false and reason when image is safe', async () => {
@@ -302,5 +308,33 @@ describe('Gemini Utility Tests', () => {
     // 緊接著第二次呼叫：觸發 Cooldown 冷卻阻擋
     const reply2 = await chatWithBobo('你好', 'user_limit_test')
     expect(reply2).toBe('（波波正在思考中，請過幾秒再跟我說話啦！💢）')
+  })
+
+  test('chatWithBobo should pre-fetch stock price and inject it into system prompt when prompt contains a ticker', async () => {
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        candidates: [{ content: { parts: [{ text: '台積電股價是 600 元。' }] } }]
+      }
+    })
+
+    const reply = await chatWithBobo('幫我查 2330 股價', 'user_stock_test')
+    expect(reply).toBe('台積電股價是 600 元。')
+
+    // 驗證第一次 Axios POST 帶有預取的股價資訊
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining('2330.TW 最新數據 (price: 600, currency: TWD)')
+              })
+            ])
+          })
+        ])
+      }),
+      expect.any(Object)
+    )
   })
 })

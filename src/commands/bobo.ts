@@ -90,13 +90,13 @@ export class BoboCommand implements Command {
           const k = msgArray.length
           if (k > 0) {
             const nowSeconds = Math.floor(Date.now() / 1000)
-            const chronologicalMsgs = msgArray.reverse() // [最舊, ..., 最新]
+            const historyMsgs = msgArray // [最新, ..., 最舊]
 
             // 1. 先從最新往舊尋找最多 3 張圖片，將其下載
             const MAX_HISTORY_IMAGES = 3
             const imagesToDownload: { msgId: string; url: string }[] = []
 
-            for (const msg of [...chronologicalMsgs].reverse()) {
+            for (const msg of historyMsgs) {
               if (imagesToDownload.length >= MAX_HISTORY_IMAGES) break
 
               // 檢查附件
@@ -158,14 +158,14 @@ export class BoboCommand implements Command {
             }
 
             // 3. 組合歷史文字 context
-            channelHistoryContext = chronologicalMsgs
+            channelHistoryContext = historyMsgs
               .map((msg: Message, i) => {
                 const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
                 const secondsAgo = nowSeconds - msgTimeSeconds
                 
-                // 計算權重：最新一筆為 1.00，其餘依位置與時間衰減 (離當前時間越遠，分數調得越低)
-                let calculatedWeight = Math.pow((i + 1) / k, 2)
-                if (i === k - 1) {
+                // 計算權重：最新一筆 (i = 0) 為 1.00，其餘依位置與時間衰減 (離當前時間越遠，分數調得越低)
+                let calculatedWeight = Math.pow((k - i) / k, 2)
+                if (i === 0) {
                   calculatedWeight = 1.0
                 } else {
                   // 對於較舊的訊息，再額外乘以時間衰減係數（越久遠衰減越多，30 分鐘衰減常數，最低保留 0.1 避免完全歸零）
@@ -269,11 +269,34 @@ export class BoboCommand implements Command {
         }
       }
 
-      const reply = await chatWithBobo(prompt, message.author.id, channelHistoryContext, image, historyImagesPayload)
+      let statusMessage: any = null
+
+      const reply = await chatWithBobo(
+        prompt,
+        message.author.id,
+        channelHistoryContext,
+        image,
+        historyImagesPayload,
+        async (statusText) => {
+          try {
+            if (!statusMessage) {
+              statusMessage = await message.reply(statusText)
+            } else {
+              await statusMessage.edit(statusText)
+            }
+          } catch (msgErr: any) {
+            console.error('Failed to send status update in Discord:', msgErr.message)
+          }
+        }
+      )
       
       // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
       if (reply.length <= 2000) {
-        await message.reply(reply)
+        if (statusMessage) {
+          await statusMessage.edit(reply)
+        } else {
+          await message.reply(reply)
+        }
       } else {
         const CHUNK_SIZE = 1900
         const chunks: string[] = []
@@ -282,7 +305,12 @@ export class BoboCommand implements Command {
         }
 
         if (chunks.length > 0) {
-          const firstMsg = await message.reply(chunks[0])
+          let firstMsg: any
+          if (statusMessage) {
+            firstMsg = await statusMessage.edit(chunks[0])
+          } else {
+            firstMsg = await message.reply(chunks[0])
+          }
           for (let i = 1; i < chunks.length; i++) {
             await (firstMsg.channel as any).send(chunks[i])
           }
