@@ -12,6 +12,7 @@ import { NsfwCommand } from './commands/nsfw'
 import { CustomCommand } from './commands/custom'
 import { BoboCommand } from './commands/bobo'
 import { roastTypo } from './utils/gemini'
+import { checkAndFixTwitterEmbed } from './features/twitter'
 
 let count = 0
 
@@ -74,20 +75,9 @@ client.on('messageCreate', async (message: Message) => {
       }
     }
 
-    // 檢查消息是否包含以 "https://x.com/" 開頭的網址
-    const regex = /https:\/\/x.com\/([^\s]+)/g
-    const match = message.content.match(regex)
+    // 偵測 x.com 若沒有產生 embed 則改為 fixvx.com 發送至同頻道
+    checkAndFixTwitterEmbed(message)
 
-    if (match) {
-      // 將每個匹配的網址替換為以 "https://vxtwitter.com/" 開頭的網址
-      // const replacedMessage = message.content.replace(regex, 'https://vxtwitter.com/$1')
-      // try {
-      //   // 在同一頻道發送修改後的網址
-      //   // message.channel.send(replacedMessage)
-      // } catch (error) {
-      //   console.error(error)
-      // }
-    }
     if (!result) {
       return
     }
