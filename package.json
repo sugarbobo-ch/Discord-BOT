@@ -32,6 +32,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "migrate": "tsx scripts/migrate.ts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
   }
 }

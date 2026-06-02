@@ -27,11 +27,15 @@
 ```json
 {
   "token": "你的_DISCORD_BOT_TOKEN",
-  "backupChannelId": "你的_備份頻道_ID"
+  "backupChannelId": "你的_備份頻道_ID",
+  "geminiApiKey": "你的_GEMINI_API_KEY",
+  "chatMemoryLimit": 10
 }
 ```
 * **token**: 前往 [Discord Developer Portal](https://discord.com/developers/applications) 建立您的 Bot，並複製 Token。
 * **backupChannelId**: 用於備份日誌的文字頻道 ID。
+* **geminiApiKey**: 前往 Google AI Studio 申請的 Gemini API Key，用於 AI 功能。
+* **chatMemoryLimit**: 設定 AI 聊天讀取的頻道歷史訊息數量上限，預設為 `10`。
 
 ### 步驟 C. 配置 `config/servers.json`
 在 `config/` 資料夾下建立 `servers.json`，並填入一個空陣列（讓機器人在加入新伺服器時有地方儲存 ID）：
