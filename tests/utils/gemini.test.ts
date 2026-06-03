@@ -1,5 +1,4 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import axios from 'axios'
 import {
   checkImageNSFW,
   chatWithBobo,
@@ -7,9 +6,28 @@ import {
   detectStocksWithAI,
   cleanLatexSymbols
 } from '../../src/utils/gemini'
+import { getStockPrice } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
 
-vi.mock('axios')
+// Hoisted mock function for generateContent
+const { mockGenerateContent } = vi.hoisted(() => {
+  return {
+    mockGenerateContent: vi.fn()
+  }
+})
+
+vi.mock('@google/genai', async (importOriginal) => {
+  const actual = await importOriginal() as any
+  return {
+    ...actual,
+    GoogleGenAI: class MockGoogleGenAI {
+      models = {
+        generateContent: mockGenerateContent
+      }
+    }
+  }
+})
+
 vi.mock('yahoo-finance2')
 
 describe('Gemini Utility Tests', () => {
@@ -23,20 +41,18 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('checkImageNSFW should return false and reason when image is safe', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: '{"nsfw": false, "reason": "這是安全圖片"}'
-                }
-              ]
-            }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"nsfw": false, "reason": "這是安全圖片"}'
+              }
+            ]
           }
-        ]
-      }
+        }
+      ]
     })
 
     const buffer = Buffer.from('fake_image_data')
@@ -46,20 +62,18 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('checkImageNSFW should return true when image is NSFW', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: '{"nsfw": true, "reason": "包含敏感內容"}'
-                }
-              ]
-            }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"nsfw": true, "reason": "包含敏感內容"}'
+              }
+            ]
           }
-        ]
-      }
+        }
+      ]
     })
 
     const buffer = Buffer.from('fake_image_data')
@@ -69,20 +83,18 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('chatWithBobo should return text from API response', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: '哈囉！我是波波。'
-                }
-              ]
-            }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '哈囉！我是波波。'
+              }
+            ]
           }
-        ]
-      }
+        }
+      ]
     })
 
     const reply = await chatWithBobo('哈囉', 'user_123')
@@ -90,29 +102,27 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('chatWithBobo should include channelHistoryContext in API payload when provided', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: '知道了，剛才聊天內容我有記住！'
-                }
-              ]
-            }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '知道了，剛才聊天內容我有記住！'
+              }
+            ]
           }
-        ]
-      }
+        }
+      ]
     })
 
     const context = '[時間: 10秒前, 發送者: 使用者A, 熱度權重: 1.00] 內容: "早安"'
     const reply = await chatWithBobo('你剛才看到什麼？', 'user_history_test', context)
 
     expect(reply).toBe('知道了，剛才聊天內容我有記住！')
-    expect(axios.post).toHaveBeenCalledWith(
-      expect.stringContaining('gemma-4-31b-it:generateContent'),
+    expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
+        model: 'gemma-4-31b-it',
         contents: [
           {
             parts: expect.arrayContaining([
@@ -130,16 +140,13 @@ describe('Gemini Utility Tests', () => {
             ])
           }
         ]
-      }),
-      expect.any(Object)
+      })
     )
   })
 
   test('chatWithBobo should send image inlineData in API payload when provided', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [{ content: { parts: [{ text: '看到了，這是一張測試圖片。' }] } }]
-      }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: '看到了，這是一張測試圖片。' }] } }]
     })
 
     const image = {
@@ -149,9 +156,9 @@ describe('Gemini Utility Tests', () => {
     const reply = await chatWithBobo('這張圖是什麼？', 'user_image_test', undefined, image)
 
     expect(reply).toBe('看到了，這是一張測試圖片。')
-    expect(axios.post).toHaveBeenCalledWith(
-      expect.stringContaining('gemma-4-31b-it:generateContent'),
+    expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
+        model: 'gemma-4-31b-it',
         contents: [
           {
             parts: expect.arrayContaining([
@@ -167,16 +174,13 @@ describe('Gemini Utility Tests', () => {
             ])
           }
         ]
-      }),
-      expect.any(Object)
+      })
     )
   })
 
   test('chatWithBobo should send history images alongside current image in API payload when provided', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [{ content: { parts: [{ text: '看到了，歷史圖片與目前圖片都收到了！' }] } }]
-      }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: '看到了，歷史圖片與目前圖片都收到了！' }] } }]
     })
 
     const currentImage = {
@@ -204,9 +208,9 @@ describe('Gemini Utility Tests', () => {
     )
 
     expect(reply).toBe('看到了，歷史圖片與目前圖片都收到了！')
-    expect(axios.post).toHaveBeenCalledWith(
-      expect.stringContaining('gemma-4-31b-it:generateContent'),
+    expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
+        model: 'gemma-4-31b-it',
         contents: [
           {
             parts: expect.arrayContaining([
@@ -234,19 +238,16 @@ describe('Gemini Utility Tests', () => {
             ])
           }
         ]
-      }),
-      expect.any(Object)
+      })
     )
   })
 
   test('chatWithBobo should return friendly message when API returns 429', async () => {
     const errorResponse = {
-      response: {
-        status: 429
-      },
+      status: 429,
       message: 'Too Many Requests'
     }
-    vi.mocked(axios.post).mockRejectedValue(errorResponse)
+    mockGenerateContent.mockRejectedValue(errorResponse)
 
     const reply = await chatWithBobo('哈囉', 'user_429')
     expect(reply).toContain('腦袋超載啦')
@@ -254,12 +255,10 @@ describe('Gemini Utility Tests', () => {
 
   test('chatWithBobo should return friendly message when API returns 503', async () => {
     const errorResponse = {
-      response: {
-        status: 503
-      },
+      status: 503,
       message: 'Service Unavailable'
     }
-    vi.mocked(axios.post).mockRejectedValue(errorResponse)
+    mockGenerateContent.mockRejectedValue(errorResponse)
 
     const reply = await chatWithBobo('哈囉', 'user_503')
     expect(reply).toContain('大腦伺服器現在好像掛掉了')
@@ -270,27 +269,25 @@ describe('Gemini Utility Tests', () => {
       code: 'ECONNABORTED',
       message: 'timeout of 30000ms exceeded'
     }
-    vi.mocked(axios.post).mockRejectedValue(errorResponse)
+    mockGenerateContent.mockRejectedValue(errorResponse)
 
     const reply = await chatWithBobo('哈囉', 'user_timeout')
     expect(reply).toContain('連線逾時')
   })
 
   test('roastTypo should return sarcastic response', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: '又打錯字了，是「應該」不是「因該」啦！'
-                }
-              ]
-            }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '又打錯字了，是「應該」不是「因該」啦！'
+              }
+            ]
           }
-        ]
-      }
+        }
+      ]
     })
 
     const roast = await roastTypo('因該是這樣吧', '因該', 'guild_123')
@@ -312,10 +309,8 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('chatWithBobo should trigger rate limit cooldown', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [{ content: { parts: [{ text: '回覆一' }] } }]
-      }
+    mockGenerateContent.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: '回覆一' }] } }]
     })
 
     // 第一次呼叫：成功
@@ -328,35 +323,30 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('chatWithBobo should pre-fetch stock price and inject it into system prompt when prompt contains a ticker', async () => {
-    vi.mocked(axios.post)
+    mockGenerateContent
       .mockResolvedValueOnce({
-        data: {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    text: '{"isMentioningStock": true, "stocks": [{"name": "台積電", "ticker": "2330.TW"}]}'
-                  }
-                ]
-              }
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "台積電", "ticker": "2330.TW"}]}'
+                }
+              ]
             }
-          ]
-        }
+          }
+        ]
       })
       .mockResolvedValueOnce({
-        data: {
-          candidates: [{ content: { parts: [{ text: '台積電股價是 600 元。' }] } }]
-        }
+        candidates: [{ content: { parts: [{ text: '台積電股價是 600 元。' }] } }]
       })
 
     const reply = await chatWithBobo('幫我查 2330 股價', 'user_stock_test')
     expect(reply).toBe('台積電股價是 600 元。')
 
-    // 驗證第二次 Axios POST 帶有預取的對照表股價資訊
-    expect(axios.post).toHaveBeenNthCalledWith(
+    // 驗證第二次呼叫帶有預取的對照表股價資訊
+    expect(mockGenerateContent).toHaveBeenNthCalledWith(
       2,
-      expect.any(String),
       expect.objectContaining({
         contents: expect.arrayContaining([
           expect.objectContaining({
@@ -369,16 +359,13 @@ describe('Gemini Utility Tests', () => {
             ])
           })
         ])
-      }),
-      expect.any(Object)
+      })
     )
   })
 
   test('chatWithBobo should include user distinction prompt and authorName in API payload when provided', async () => {
-    vi.mocked(axios.post).mockResolvedValueOnce({
-      data: {
-        candidates: [{ content: { parts: [{ text: '好的，大華，我已經知道了。' }] } }]
-      }
+    mockGenerateContent.mockResolvedValueOnce({
+      candidates: [{ content: { parts: [{ text: '好的，大華，我已經知道了。' }] } }]
     })
 
     const reply = await chatWithBobo(
@@ -392,8 +379,7 @@ describe('Gemini Utility Tests', () => {
     )
     expect(reply).toBe('好的，大華，我已經知道了。')
 
-    expect(axios.post).toHaveBeenCalledWith(
-      expect.any(String),
+    expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
         contents: expect.arrayContaining([
           expect.objectContaining({
@@ -404,8 +390,7 @@ describe('Gemini Utility Tests', () => {
             ])
           })
         ])
-      }),
-      expect.any(Object)
+      })
     )
   })
 
@@ -440,20 +425,18 @@ describe('Gemini Utility Tests', () => {
 
   describe('detectStocksWithAI', () => {
     test('should query Gemini and return parsed stock mentions', async () => {
-      vi.mocked(axios.post).mockResolvedValueOnce({
-        data: {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    text: '{"isMentioningStock": true, "stocks": [{"name": "聯發科", "ticker": "2454.TW"}]}'
-                  }
-                ]
-              }
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "聯發科", "ticker": "2454.TW"}]}'
+                }
+              ]
             }
-          ]
-        }
+          }
+        ]
       })
 
       const result = await detectStocksWithAI('發哥最新股價？', 'test_key')
@@ -462,38 +445,30 @@ describe('Gemini Utility Tests', () => {
         stocks: [{ name: '聯發科', ticker: '2454.TW' }]
       })
 
-      expect(axios.post).toHaveBeenCalledWith(
-        expect.stringContaining('gemma-4-31b-it:generateContent'),
+      expect(mockGenerateContent).toHaveBeenCalledWith(
         expect.objectContaining({
           contents: expect.arrayContaining([
             expect.objectContaining({
-              parts: expect.arrayContaining([
-                expect.objectContaining({
-                  text: expect.stringContaining('發哥')
-                })
-              ])
+              text: expect.stringContaining('發哥')
             })
           ])
-        }),
-        expect.any(Object)
+        })
       )
     })
 
     test('should map 牙科 to 南亞科 ticker 2408.TW', async () => {
-      vi.mocked(axios.post).mockResolvedValueOnce({
-        data: {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    text: '{"isMentioningStock": true, "stocks": [{"name": "南亞科", "ticker": "2408.TW"}]}'
-                  }
-                ]
-              }
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "南亞科", "ticker": "2408.TW"}]}'
+                }
+              ]
             }
-          ]
-        }
+          }
+        ]
       })
 
       const result = await detectStocksWithAI('牙科可以買嗎？', 'test_key')
@@ -501,6 +476,41 @@ describe('Gemini Utility Tests', () => {
         isMentioningStock: true,
         stocks: [{ name: '南亞科', ticker: '2408.TW' }]
       })
+    })
+  })
+
+  describe('getStockPrice Normalization', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    test('should append .TW for 4-digit code and query successfully', async () => {
+      const quoteSpy = vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValueOnce({
+        regularMarketPrice: 600,
+        currency: 'TWD',
+        displayName: '台積電'
+      } as any)
+
+      const result = await getStockPrice('2330')
+      expect(quoteSpy).toHaveBeenCalledWith('2330.TW')
+      expect(result.symbol).toBe('2330.TW')
+      expect(result.price).toBe(600)
+    })
+
+    test('should try .TWO if .TW fails for OTC stocks', async () => {
+      const quoteSpy = vi.spyOn(yahooFinance.prototype, 'quote')
+        .mockRejectedValueOnce(new Error('Not found on TW'))
+        .mockResolvedValueOnce({
+          regularMarketPrice: 80,
+          currency: 'TWD',
+          displayName: '元太'
+        } as any)
+
+      const result = await getStockPrice('8069')
+      expect(quoteSpy).toHaveBeenNthCalledWith(1, '8069.TW')
+      expect(quoteSpy).toHaveBeenNthCalledWith(2, '8069.TWO')
+      expect(result.symbol).toBe('8069.TWO')
+      expect(result.price).toBe(80)
     })
   })
 })

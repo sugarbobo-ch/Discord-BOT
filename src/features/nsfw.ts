@@ -7,9 +7,9 @@ export const getPixivURL = (message: Message): void => {
   }
 }
 
-export const getSourceURL = (message: Message): void => {
+export const getSourceURL = (message: Message): Promise<void> | void => {
   if (message.content.substring(1).split(' ')[0].toLowerCase() === '搜圖') {
-    runNsfwCommand(message)
+    return runNsfwCommand(message)
   }
 }
 

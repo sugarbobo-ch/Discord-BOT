@@ -134,14 +134,14 @@ export class BoboCommand implements Command {
               }
             }
 
-            // 依序 [新 -> 舊] 下載以與 parts 編號對應 (與 historyMsgs [最新 -> 最舊] 排序保持一致)
+            // 依序 [舊 -> 新] 下載以與 parts 編號對應 (讓最舊的圖片標記為 1，最新的歷史圖片標記為最後，符合時序)
             const downloadedHistoryImagesMap = new Map<
               string,
               { buffer: Buffer; mimeType: string; labelIndex: number; url: string }
             >()
             let labelIdx = 1
 
-            for (const item of imagesToDownload) {
+            for (const item of [...imagesToDownload].reverse()) {
               try {
                 const response = await axios.get(item.url, {
                   responseType: 'arraybuffer',
