@@ -22,6 +22,7 @@ import { CustomCommand } from './commands/custom'
 import { BoboCommand } from './commands/bobo'
 import { SettingCommand } from './commands/setting'
 import { FeatureCommand } from './commands/feature'
+import { StockCommand } from './commands/stock'
 import { roastTypo } from './utils/gemini'
 import { checkAndFixTwitterEmbed } from './features/twitter'
 import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
@@ -53,6 +54,7 @@ client.on('ready', async () => {
   commandRegistry.register(new BoboCommand())
   commandRegistry.register(new SettingCommand())
   commandRegistry.register(new FeatureCommand())
+  commandRegistry.register(new StockCommand())
 
   // 註冊 Discord 斜線指令 (Slash Commands)
   try {
@@ -212,9 +214,10 @@ client.on('interactionCreate', async interaction => {
           .setColor(0x3498db) // 質感藍色
           .addFields(
             {
-              name: '💬 AI 聊天助理 (Gemini 驅動)',
+              name: '💬 AI 聊天助理 (Gemini 驅動) 與股票功能',
               value:
                 '• `!bobo [內容]` 或直接 Tag/Mention 機器人與我聊天。\n' +
+                '• `!stock [代號或名稱]`：直接查詢最新股價（支援中英文及上櫃股票，如 `!stock 2313`、`!stock 美光`、`!stock 華通`）。\n' +
                 '• 支援上傳圖片或提供圖片網址讓我解讀。\n' +
                 '• 自動參考聊天室對話，且講話風格隨性自然！\n' +
                 '• 在聊天中輸入股票代號（例如：`2330`、`AAPL`），會自動抓取即時股價並分析！'

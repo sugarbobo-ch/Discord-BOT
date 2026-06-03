@@ -1,8 +1,10 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { getStockPrice, extractTickers, clearStockCache } from '../../src/utils/stock'
+import { getStockPrice, extractTickers, clearStockCache, searchStockTickerWithYahoo, fetchStockNameFromYahooPage } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
+import axios from 'axios'
 
 vi.mock('yahoo-finance2')
+vi.mock('axios')
 
 describe('Stock Utility Tests', () => {
   beforeEach(() => {
@@ -75,6 +77,99 @@ describe('Stock Utility Tests', () => {
       const result = await getStockPrice('INVALID')
       expect(result.error).toBeDefined()
       expect(result.symbol).toBe('INVALID')
+    })
+  })
+
+  describe('searchStockTickerWithYahoo', () => {
+    test('should search and return resolved symbol and name on success', async () => {
+      const axiosGetSpy = vi.spyOn(axios, 'get').mockResolvedValueOnce({
+        data: {
+          ResultSet: {
+            Result: [
+              {
+                symbol: '4927.TW',
+                name: '泰鼎-KY',
+                exch: 'TAI',
+                type: 'S'
+              }
+            ]
+          }
+        }
+      } as any)
+
+      const result = await searchStockTickerWithYahoo('泰鼎')
+      expect(result).toEqual({
+        symbol: '4927.TW',
+        name: '泰鼎-KY'
+      })
+      expect(axiosGetSpy).toHaveBeenCalledWith(expect.stringContaining('query=%E6%B3%B0%E9%BC%8E'), expect.any(Object))
+    })
+
+    test('should return null if no result found', async () => {
+      vi.spyOn(axios, 'get').mockResolvedValueOnce({
+        data: {
+          ResultSet: {
+            Result: []
+          }
+        }
+      } as any)
+
+      const result = await searchStockTickerWithYahoo('未知')
+      expect(result).toBeNull()
+    })
+
+    test('should return null on request error', async () => {
+      vi.spyOn(axios, 'get').mockRejectedValueOnce(new Error('Network error'))
+
+      const result = await searchStockTickerWithYahoo('泰鼎')
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('fetchStockNameFromYahooPage', () => {
+    test('should return Chinese name for Taiwanese stock page title', async () => {
+      const axiosGetSpy = vi.spyOn(axios, 'get').mockResolvedValueOnce({
+        data: '<html><head><title>台光電(2383.TW) 走勢圖 - Yahoo股市</title></head></html>'
+      } as any)
+
+      const result = await fetchStockNameFromYahooPage('2383.TW')
+      expect(result).toBe('台光電')
+      expect(axiosGetSpy).toHaveBeenCalledWith('https://tw.stock.yahoo.com/quote/2383.TW', expect.any(Object))
+    })
+
+    test('should return name for US stock page title', async () => {
+      const axiosGetSpy = vi.spyOn(axios, 'get').mockResolvedValueOnce({
+        data: '<html><head><title>Apple Inc. (AAPL) Stock Price, News, Quote &amp; History - Yahoo Finance</title></head></html>'
+      } as any)
+
+      const result = await fetchStockNameFromYahooPage('AAPL')
+      expect(result).toBe('Apple Inc.')
+      expect(axiosGetSpy).toHaveBeenCalledWith('https://finance.yahoo.com/quote/AAPL', expect.any(Object))
+    })
+
+    test('should decode &amp; HTML entities', async () => {
+      vi.spyOn(axios, 'get').mockResolvedValueOnce({
+        data: '<html><head><title>A &amp; B Co. (AB) Stock Price</title></head></html>'
+      } as any)
+
+      const result = await fetchStockNameFromYahooPage('AB')
+      expect(result).toBe('A & B Co.')
+    })
+
+    test('should return null if title tag is not found', async () => {
+      vi.spyOn(axios, 'get').mockResolvedValueOnce({
+        data: '<html><head></head></html>'
+      } as any)
+
+      const result = await fetchStockNameFromYahooPage('2383.TW')
+      expect(result).toBeNull()
+    })
+
+    test('should return null on request error', async () => {
+      vi.spyOn(axios, 'get').mockRejectedValueOnce(new Error('Network error'))
+
+      const result = await fetchStockNameFromYahooPage('2383.TW')
+      expect(result).toBeNull()
     })
   })
 })

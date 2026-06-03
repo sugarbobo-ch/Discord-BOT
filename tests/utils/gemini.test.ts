@@ -4,6 +4,8 @@ import {
   chatWithBobo,
   roastTypo,
   detectStocksWithAI,
+  searchStockTickerWithAI,
+  getChineseNameWithAI,
   cleanLatexSymbols,
   getApiKeys,
   executeGenAI
@@ -388,6 +390,9 @@ describe('Gemini Utility Tests', () => {
             parts: expect.arrayContaining([
               expect.objectContaining({
                 text: expect.stringContaining('當前對你說話的使用者是「大華」')
+              }),
+              expect.objectContaining({
+                text: '[發送者: 大華] 內容: "哈囉"'
               })
             ])
           })
@@ -481,6 +486,132 @@ describe('Gemini Utility Tests', () => {
     })
   })
 
+  describe('searchStockTickerWithAI', () => {
+    test('should search and return resolved ticker', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"ticker": "2313.TW"}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+
+      const result = await searchStockTickerWithAI('華通')
+      expect(result).toBe('2313.TW')
+
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contents: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.stringContaining('華通 股票')
+            })
+          ])
+        })
+      )
+    })
+
+    test('should clean resolved ticker suffixes (e.g. -KY)', async () => {
+      // Case 1: 4927-KY.TW
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '{"ticker": "4927-KY.TW"}' }] } }]
+      })
+      expect(await searchStockTickerWithAI('泰鼎')).toBe('4927.TW')
+
+      // Case 2: 4927-KY
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '{"ticker": "4927-KY"}' }] } }]
+      })
+      expect(await searchStockTickerWithAI('泰鼎')).toBe('4927')
+    })
+
+    test('should return null if ticker is null', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"ticker": null}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+
+      const result = await searchStockTickerWithAI('未知股票')
+      expect(result).toBeNull()
+    })
+
+    test('should return null on API error', async () => {
+      mockGenerateContent.mockRejectedValueOnce(new Error('API Error'))
+      const result = await searchStockTickerWithAI('華通')
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('getChineseNameWithAI', () => {
+    test('should return resolved Chinese name on success', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '華通'
+                }
+              ]
+            }
+          }
+        ]
+      })
+
+      const result = await getChineseNameWithAI('2313.TW', 'Compeq Manufacturing Co., Ltd.')
+      expect(result).toBe('華通')
+
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contents: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.stringContaining('Compeq Manufacturing Co., Ltd.')
+            })
+          ])
+        })
+      )
+    })
+
+    test('should return null if API returns null string', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: 'null'
+                }
+              ]
+            }
+          }
+        ]
+      })
+
+      const result = await getChineseNameWithAI('INVALID')
+      expect(result).toBeNull()
+    })
+
+    test('should return null on API error', async () => {
+      mockGenerateContent.mockRejectedValueOnce(new Error('API Error'))
+      const result = await getChineseNameWithAI('2313.TW')
+      expect(result).toBeNull()
+    })
+  })
+
   describe('getStockPrice Normalization', () => {
     beforeEach(() => {
       vi.restoreAllMocks()
@@ -568,6 +699,33 @@ describe('Gemini Utility Tests', () => {
       // Verify first key is put on cooldown
       const keys = getApiKeys()
       const firstKey = keys.find(k => k.key === 'rate_limit_key1')
+      expect(firstKey?.cooldownUntil).toBeGreaterThan(Date.now())
+    })
+
+    test('should rotate keys when a transient server error (503) is encountered', async () => {
+      process.env.GEMINI_API_KEYS = 'transient_key1, transient_key2'
+      getApiKeys()
+
+      // First call fails with 503
+      mockGenerateContent.mockRejectedValueOnce({
+        status: 503,
+        message: 'Service Unavailable'
+      })
+      // Second call succeeds
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'Success on key 2 after 503' }] } }]
+      })
+
+      const reply = await executeGenAI((ai) => ai.models.generateContent({
+        model: 'model',
+        contents: [{ parts: [{ text: 'test' }] }]
+      }))
+
+      expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success on key 2 after 503')
+      
+      // Verify first key is put on cooldown (with a cooldown value set in the future)
+      const keys = getApiKeys()
+      const firstKey = keys.find(k => k.key === 'transient_key1')
       expect(firstKey?.cooldownUntil).toBeGreaterThan(Date.now())
     })
 

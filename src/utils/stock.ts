@@ -1,4 +1,5 @@
 import YahooFinance from 'yahoo-finance2'
+import axios from 'axios'
 
 const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey']
@@ -324,3 +325,59 @@ export function extractTickers(text: string): string[] {
 export function clearStockCache(): void {
   stockCache.clear()
 }
+
+/**
+ * 使用 Yahoo Finance 聯想搜尋 API 搜尋股票代碼與中文名稱
+ */
+export async function searchStockTickerWithYahoo(query: string): Promise<{ symbol: string; name: string } | null> {
+  const url = `https://tw.stock.yahoo.com/stock_ms/_td-stock/api/resource/AutocompleteService;query=${encodeURIComponent(query)}`
+  try {
+    const response = await axios.get(url, { timeout: 5000 })
+    const results = response.data?.ResultSet?.Result
+    if (Array.isArray(results) && results.length > 0) {
+      // 優先尋找類型為 S (股票/Equity) 或 ETF 的結果
+      const stockResult = results.find(r => r.type === 'S' || r.type === 'ETF') || results[0]
+      if (stockResult && stockResult.symbol) {
+        return {
+          symbol: stockResult.symbol.trim(),
+          name: stockResult.name ? stockResult.name.trim() : ''
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error(`[Yahoo Autocomplete Error] Failed to search for "${query}":`, error.message)
+  }
+  return null
+}
+
+/**
+ * 從 Yahoo 股市網頁擷取股票/公司的中文名稱（或英文名稱）
+ */
+export async function fetchStockNameFromYahooPage(symbol: string): Promise<string | null> {
+  const isTaiwanStock = symbol.toUpperCase().endsWith('.TW') || symbol.toUpperCase().endsWith('.TWO')
+  const url = isTaiwanStock
+    ? `https://tw.stock.yahoo.com/quote/${symbol}`
+    : `https://finance.yahoo.com/quote/${symbol}`
+
+  try {
+    const res = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 5000
+    })
+
+    const titleMatch = res.data.match(/<title>([\s\S]*?)<\/title>/i)
+    if (titleMatch && titleMatch[1]) {
+      const title = titleMatch[1].trim()
+      const rawName = title.split('(')[0].trim()
+      if (rawName) {
+        return rawName.replace(/&amp;/g, '&')
+      }
+    }
+  } catch (error: any) {
+    console.error(`[fetchStockNameFromYahooPage Error] Failed to fetch name from page for ${symbol}:`, error.message)
+  }
+  return null
+}
+
