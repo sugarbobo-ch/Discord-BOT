@@ -20,7 +20,7 @@
 * **修復漏洞**：`follow-redirects` 的跨域跳轉敏感 Header (如 `Proxy-Authorization`) 洩漏漏洞 (High, CVE-2024-39338) 與 Axios 的 ReDoS 漏洞。
 * **影響**：大幅提高機器人進行外部 API 呼叫（如圖床、NSFW 連接解析）時的安全性。
 
-### 2. `discord.js` 升級 (`^14.7.1` ➡️ `^14.15.3`)
+### 2. `discord.js` 升級 (`^14.7.1` ➡️ `^14.26.4`)
 * **修復漏洞**：`undici` 通訊庫的多個高危漏洞 (CRLF Injection, Cookie Header Leak, Smuggling, WebSocket Decompression DoS) 以及 `ws` 通訊庫的未初始化內存洩漏漏洞。
 * **影響**：解決了機器人可能因為接收惡意 WebSocket 通訊而崩潰或洩漏 Cookie 認證資訊的嚴重風險。
 
