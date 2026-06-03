@@ -1,9 +1,15 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { checkAndFixTwitterEmbed } from '../../src/features/twitter'
+import { getTwitterSetting } from '../../src/utils/db'
+
+vi.mock('../../src/utils/db', () => ({
+  getTwitterSetting: vi.fn()
+}))
 
 describe('Twitter Embed Fixer Feature Tests', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    vi.mocked(getTwitterSetting).mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -87,5 +93,27 @@ describe('Twitter Embed Fixer Feature Tests', () => {
 
     expect(mockChannel.messages.fetch).toHaveBeenCalledWith('123')
     expect(mockChannel.send).toHaveBeenCalledWith('check this: https://fixvx.com/user/status/123456')
+  })
+
+  test('should do nothing if x.com link exists but twitter detection setting is disabled', async () => {
+    vi.mocked(getTwitterSetting).mockReturnValue(false)
+    const mockChannel = {
+      messages: {
+        fetch: vi.fn()
+      },
+      send: vi.fn()
+    }
+    const mockMessage = {
+      id: '123',
+      content: 'check this: https://x.com/user/status/123456',
+      guild: { id: 'guild123' },
+      channel: mockChannel
+    } as any
+
+    checkAndFixTwitterEmbed(mockMessage)
+    await vi.runAllTimersAsync()
+
+    expect(mockChannel.messages.fetch).not.toHaveBeenCalled()
+    expect(mockChannel.send).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll } from 'vitest'
-import { getDb } from '../../src/utils/db'
+import { getDb, getTwitterSetting, setTwitterSetting } from '../../src/utils/db'
 
 describe('SQLite Database Tests', () => {
   let db: any
@@ -14,11 +14,14 @@ describe('SQLite Database Tests', () => {
     // 檢查資料表是否存在
     const serversTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='servers'").get()
     const commandsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='commands'").get()
+    const settingsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get()
 
     expect(serversTable).toBeDefined()
     expect(serversTable.name).toBe('servers')
     expect(commandsTable).toBeDefined()
     expect(commandsTable.name).toBe('commands')
+    expect(settingsTable).toBeDefined()
+    expect(settingsTable.name).toBe('settings')
   })
 
   test('should insert and retrieve server', () => {
@@ -66,6 +69,25 @@ describe('SQLite Database Tests', () => {
     expect(cmdDeleted).toBeUndefined()
 
     // 清理
+    db.prepare('DELETE FROM servers WHERE server_id = ?').run(testServerId)
+  })
+
+  test('should get and set twitter setting', () => {
+    const testServerId = 'test_server_setting'
+
+    // 預設應為開啟 (true)
+    expect(getTwitterSetting(testServerId)).toBe(true)
+
+    // 設定為關閉 (false)
+    setTwitterSetting(testServerId, false)
+    expect(getTwitterSetting(testServerId)).toBe(false)
+
+    // 設定為開啟 (true)
+    setTwitterSetting(testServerId, true)
+    expect(getTwitterSetting(testServerId)).toBe(true)
+
+    // 清除測試資料
+    db.prepare('DELETE FROM settings WHERE server_id = ?').run(testServerId)
     db.prepare('DELETE FROM servers WHERE server_id = ?').run(testServerId)
   })
 })

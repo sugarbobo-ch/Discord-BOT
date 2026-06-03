@@ -1,4 +1,5 @@
 import { Message } from 'discord.js'
+import { getTwitterSetting } from '../utils/db'
 
 /**
  * 偵測訊息中是否含有 x.com 連結。
@@ -9,6 +10,14 @@ export const checkAndFixTwitterEmbed = (message: Message, delayMs: number = 3000
   // 檢查是否含有 x.com 網址 (忽略大小寫)
   if (!/https?:\/\/(www\.)?x\.com\/[^\s]+/i.test(content)) {
     return
+  }
+
+  // 檢查伺服器設定是否開啟置換
+  if (message.guild) {
+    const isEnabled = getTwitterSetting(message.guild.id)
+    if (!isEnabled) {
+      return
+    }
   }
 
   setTimeout(async () => {

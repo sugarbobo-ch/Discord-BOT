@@ -9,9 +9,10 @@ const mockMessage = (content: string) =>
 
 describe('Command Utility Tests', () => {
   describe('checkPrefix', () => {
-    test('should return true for messages starting with ! or ！', () => {
+    test('should return true for messages starting with !, ！, or /', () => {
       expect(checkPrefix(mockMessage('!help'))).toBe(true)
       expect(checkPrefix(mockMessage('！list'))).toBe(true)
+      expect(checkPrefix(mockMessage('/help'))).toBe(true)
     })
 
     test('should return false for messages not starting with prefix', () => {
@@ -22,6 +23,7 @@ describe('Command Utility Tests', () => {
     test('should return false for single prefix message', () => {
       expect(checkPrefix(mockMessage('!'))).toBe(false)
       expect(checkPrefix(mockMessage('！'))).toBe(false)
+      expect(checkPrefix(mockMessage('/'))).toBe(false)
     })
   })
 
@@ -54,6 +56,7 @@ describe('Command Utility Tests', () => {
       expect(getCommandName(mockMessage('!help'))).toBe('help')
       expect(getCommandName(mockMessage('!add cmd text'))).toBe('add')
       expect(getCommandName(mockMessage('！list'))).toBe('list')
+      expect(getCommandName(mockMessage('/setting'))).toBe('setting')
     })
 
     test('should handle mention commands correctly', () => {
