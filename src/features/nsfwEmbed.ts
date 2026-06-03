@@ -18,6 +18,7 @@ const WACG_REGEX =
   /https?:\/\/(?:www\.)?wnacg\.(?:com|org|net)\/(?:photos-index-aid-|albums-index-id-|photos-slide-aid-|photos-view-id-)(\d+)(?:\.html)?/i
 const COMIC18_REGEX =
   /https?:\/\/(?:www\.)?(?:18comic\.(?:vip|org|art|ink)|jmcomic\.(?:me|co)|jm-comic\d*\.(?:art|group))\/(?:album|photo)\/(\d+)\/?/i
+const HAPPYMH_REGEX = /https?:\/\/(?:www\.|m\.)?happymh\.com\/manga\/([a-zA-Z0-9_-]+)\/?/i
 
 /**
  * 取得 E-Hentai / ExHentai 的 Metadata
@@ -137,6 +138,106 @@ const fetchWnacgMetadata = async (url: string): Promise<EmbedMetadata | null> =>
 }
 
 /**
+ * 取得 Happymh 的 Metadata
+ */
+const fetchHappymhMetadata = async (url: string): Promise<EmbedMetadata | null> => {
+  const regex = new RegExp(HAPPYMH_REGEX.source, 'i')
+  const match = regex.exec(url)
+  if (!match) return null
+
+  const id = match[1]
+  const targetUrl = `https://m.happymh.com/manga/${id}`
+
+  let html = ''
+  try {
+    const res = await axios.get(targetUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+      },
+      timeout: 10000
+    })
+    html = res.data
+  } catch (error: any) {
+    console.warn(`[fetchHappymhMetadata] Direct fetch failed (${error.message || error}). Retrying via Google Translate proxy...`)
+    const translateUrl = `https://translate.google.com/translate?sl=auto&tl=zh-TW&u=${encodeURIComponent(targetUrl)}`
+    try {
+      const res = await axios.get(translateUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+        },
+        timeout: 10000
+      })
+      html = res.data
+    } catch (proxyError: any) {
+      console.error(`[fetchHappymhMetadata] Google Translate proxy fetch also failed:`, proxyError.message || proxyError)
+      return null
+    }
+  }
+
+  try {
+    const titleMatch =
+      html.match(/<h2 class="mg-title">([^<]+)<\/h2>/i) ||
+      html.match(/"serie_name"\s*:\s*"([^"]+)"/i) ||
+      html.match(/<title>([^<]+)<\/title>/i)
+    let title = titleMatch ? titleMatch[1].trim() : '嗨皮漫畫'
+
+    if (title.includes('Google 翻譯') || title.includes('Google Translate')) {
+      const originalTitleMatch = html.match(/<title>(?!Google 翻譯|Google Translate)([^<]+)<\/title>/i)
+      if (originalTitleMatch) {
+        title = originalTitleMatch[1].trim()
+      } else {
+        const globalTitleMatch = html.match(/<title>([^<]+)<\/title>/gi)
+        if (globalTitleMatch) {
+          for (const t of globalTitleMatch) {
+            const cleanT = t.replace(/<\/?title>/g, '').trim()
+            if (!cleanT.includes('Google 翻譯') && !cleanT.includes('Google Translate')) {
+              title = cleanT
+              break
+            }
+          }
+        }
+      }
+    }
+    title = title.replace(/\s*-\s*嗨皮漫畫.*$/, '').trim()
+
+    const coverMatch =
+      html.match(/class="mg-cover"[^>]*>\s*<mip-img\s+src="([^"]+)"/i) ||
+      html.match(/"serie_cover"\s*:\s*"([^"]+)"/i)
+    const coverUrl = coverMatch ? coverMatch[1].trim() : ''
+
+    const authorMatch = html.match(/class="mg-sub-title"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/i)
+    const author = authorMatch ? authorMatch[1].trim() : '未知'
+
+    const tags: string[] = []
+    const genreRegex = /href="[^"]*latest\?genre=[^"]*"\s*>([^<]+)<\/a>/gi
+    let genreMatch
+    while ((genreMatch = genreRegex.exec(html)) !== null) {
+      const t = genreMatch[1].trim()
+      if (t && !tags.includes(t)) {
+        tags.push(t)
+      }
+    }
+
+    return {
+      title,
+      url,
+      coverUrl,
+      author,
+      tags,
+      siteName: 'Happymh 嗨皮漫畫',
+      color: 0x9c27b0
+    }
+  } catch (error: any) {
+    console.error(`[fetchHappymhMetadata] Error parsing metadata for ${url}:`, error.message || error)
+  }
+  return null
+}
+
+/**
  * 取得 18Comic 的 Metadata
  */
 const fetch18ComicMetadata = async (url: string): Promise<EmbedMetadata | null> => {
@@ -200,10 +301,33 @@ const fetch18ComicMetadata = async (url: string): Promise<EmbedMetadata | null> 
     let title = titleMatch ? titleMatch[1].trim() : '禁漫天堂'
     title = title.replace(/\s*-\s*禁漫天堂.*$/, '').trim()
 
-    const imgMatch =
-      html.match(/<meta property="og:image" content="([^"]+)"/i) ||
-      html.match(/<div class="thumb-overlay">[^]*?<img[^>]+src="([^"]+)"/i)
-    let coverUrl = imgMatch ? imgMatch[1] : ''
+    const scrambleOriginal = html.match(/class="[^"]*scramble-page[^"]*"[^]*?<img[^>]+data-original="([^"]+)"/i)
+    const thumbAlbumsOriginal = html.match(/class="[^"]*thumb-overlay-albums[^"]*"[^]*?<img[^>]+data-original="([^"]+)"/i)
+    const albumCoverSrc = html.match(/id="album_photo_cover"[^]*?<img[^>]+src="([^"]+)"/i)
+    const albumCoverOriginal = html.match(/id="album_photo_cover"[^]*?<img[^>]+data-original="([^"]+)"/i)
+    const scrambleSrc = html.match(/class="[^"]*scramble-page[^"]*"[^]*?<img[^>]+src="([^"]+)"/i)
+    const thumbAlbumsSrc = html.match(/class="[^"]*thumb-overlay-albums[^"]*"[^]*?<img[^>]+src="([^"]+)"/i)
+    const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/i)
+    const thumbOverlayMatch = html.match(/<div class="thumb-overlay">[^]*?<img[^>]+src="([^"]+)"/i)
+
+    let coverUrl = ''
+    if (scrambleOriginal) {
+      coverUrl = scrambleOriginal[1]
+    } else if (thumbAlbumsOriginal) {
+      coverUrl = thumbAlbumsOriginal[1]
+    } else if (albumCoverSrc) {
+      coverUrl = albumCoverSrc[1]
+    } else if (albumCoverOriginal) {
+      coverUrl = albumCoverOriginal[1]
+    } else if (scrambleSrc && !scrambleSrc[1].includes('blank.jpg')) {
+      coverUrl = scrambleSrc[1]
+    } else if (thumbAlbumsSrc && !thumbAlbumsSrc[1].includes('blank.jpg')) {
+      coverUrl = thumbAlbumsSrc[1]
+    } else if (ogImageMatch) {
+      coverUrl = ogImageMatch[1]
+    } else if (thumbOverlayMatch) {
+      coverUrl = thumbOverlayMatch[1]
+    }
 
     const authorMatch =
       html.match(/itemprop="author"[^>]*><a[^>]*>([^<]+)<\/a>/i) ||
@@ -306,8 +430,9 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
   const hasEh = EHENTAI_REGEX.test(content)
   const hasWn = WACG_REGEX.test(content)
   const hasComic = COMIC18_REGEX.test(content)
+  const hasHappymh = HAPPYMH_REGEX.test(content)
 
-  if (!hasEh && !hasWn && !hasComic) return
+  if (!hasEh && !hasWn && !hasComic && !hasHappymh) return
 
   // 2. 檢查是否為 NSFW 頻道
   const isNsfw =
@@ -340,6 +465,11 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
         urls.push(match[0])
       }
 
+      const happymhRegex = new RegExp(HAPPYMH_REGEX.source, 'gi')
+      while ((match = happymhRegex.exec(content)) !== null) {
+        urls.push(match[0])
+      }
+
       // 對於每個網址，若 Discord 沒有為其產生包含縮圖的 embed，則發送自訂預覽
       const processedIds = new Set<string>()
 
@@ -348,6 +478,7 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
         let isEhUrl = false
         let isWnUrl = false
         let isComicUrl = false
+        let isHappymhUrl = false
 
         let matchArray = new RegExp(EHENTAI_REGEX.source, 'i').exec(url)
         if (matchArray) {
@@ -363,6 +494,12 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
             if (matchArray) {
               id = matchArray[1]
               isComicUrl = true
+            } else {
+              matchArray = new RegExp(HAPPYMH_REGEX.source, 'i').exec(url)
+              if (matchArray) {
+                id = matchArray[1]
+                isHappymhUrl = true
+              }
             }
           }
         }
@@ -390,6 +527,8 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
           metadata = await fetchWnacgMetadata(url)
         } else if (isComicUrl) {
           metadata = await fetch18ComicMetadata(url)
+        } else if (isHappymhUrl) {
+          metadata = await fetchHappymhMetadata(url)
         }
 
         if (metadata) {

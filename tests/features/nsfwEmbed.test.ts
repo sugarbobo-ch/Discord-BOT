@@ -213,4 +213,150 @@ describe('NSFW Embed Features Tests', () => {
     // 應該只發送一次自訂 embed
     expect(mockMessage.channel.send).toHaveBeenCalledTimes(1)
   })
+
+  test('should fetch and send embed for Happymh URL', async () => {
+    mockMessage.content = 'https://m.happymh.com/manga/xielingfuti'
+
+    const mockHtml = `
+      <h2 class="mg-title">邪灵附体</h2>
+      <p class="mg-sub-title">
+        Satanophany
+      </p>
+      <p class="mg-sub-title">
+        <a href="#">山田惠庸</a>
+      </p>
+      <p class="mg-cate">
+        <a href="/latest?genre=maoxian">冒险</a>
+      </p>
+      <div class="mg-cover">
+        <mip-img src="https://rr.happymh.com/cover.jpg"></mip-img>
+      </div>
+    `
+
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      status: 200,
+      data: mockHtml
+    })
+
+    checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
+
+    await vi.runAllTimersAsync()
+
+    expect(axios.get).toHaveBeenCalledWith('https://m.happymh.com/manga/xielingfuti', expect.any(Object))
+    expect(mockMessage.channel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.any(Object)
+        ])
+      })
+    )
+  })
+
+  test('should prioritize scramble-page cover image for 18comic photo page', async () => {
+    mockMessage.content = 'https://18comic.vip/photo/12345'
+
+    const mockHtml = `
+      <meta property="og:title" content="Test Comic Title" />
+      <meta property="og:image" content="https://18c.com/logo.png" />
+      作者：<span itemprop="author"><a href="#">Comic Artist</a></span>
+      <a href="/search/photos?search_query=tag1">tag1</a>
+      <div class="center scramble-page">
+        <img src="https://18c.com/blank.jpg" data-original="https://18c.com/scramble_cover.webp" />
+      </div>
+    `
+
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      status: 200,
+      data: mockHtml
+    })
+
+    checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
+
+    await vi.runAllTimersAsync()
+
+    expect(mockMessage.channel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.any(Object)
+        ])
+      })
+    )
+
+    const sendCallArgs = vi.mocked(mockMessage.channel.send).mock.calls[0][0] as any
+    const embed = sendCallArgs.embeds[0]
+    expect(embed.data.image.url).toBe('https://18c.com/scramble_cover.webp')
+  })
+
+  test('should prioritize album_photo_cover cover image for 18comic album page', async () => {
+    mockMessage.content = 'https://18comic.vip/album/12345'
+
+    const mockHtml = `
+      <meta property="og:title" content="Test Comic Title" />
+      <meta property="og:image" content="https://18c.com/logo.png" />
+      作者：<span itemprop="author"><a href="#">Comic Artist</a></span>
+      <a href="/search/photos?search_query=tag1">tag1</a>
+      <div id="album_photo_cover">
+        <img src="https://18c.com/album_cover.jpg" />
+      </div>
+    `
+
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      status: 200,
+      data: mockHtml
+    })
+
+    checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
+
+    await vi.runAllTimersAsync()
+
+    expect(mockMessage.channel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.any(Object)
+        ])
+      })
+    )
+
+    const sendCallArgs = vi.mocked(mockMessage.channel.send).mock.calls[0][0] as any
+    const embed = sendCallArgs.embeds[0]
+    expect(embed.data.image.url).toBe('https://18c.com/album_cover.jpg')
+  })
+
+  test('should fallback to Google Translate proxy if direct fetch returns 403 for Happymh URL', async () => {
+    mockMessage.content = 'https://m.happymh.com/manga/xielingfuti'
+
+    const error403 = new Error('Request failed with status code 403')
+    ;(error403 as any).response = { status: 403 }
+    vi.mocked(axios.get).mockRejectedValueOnce(error403)
+
+    const mockTranslateHtml = `
+      <title>Google 翻譯</title>
+      <title>邪灵附体漫画-Satanophany  山田惠庸 — 嗨皮漫画网|嗨皮漫画</title>
+      <div class="mg-cover"><mip-img src="https://rr.happymh.com/cover.jpg"></mip-img></div>
+      <div class="mg-property">
+        <h2 class="mg-title">邪灵附体</h2>
+        <p class="mg-sub-title">Satanophany</p>
+        <p class="mg-sub-title"><a href="https://m-happymh-com.translate.goog/...#">山田惠庸</a></p>
+        <p class="mg-cate"><a href="https://m-happymh-com.translate.goog/latest?genre=maoxian&amp;...">冒险</a></p>
+      </div>
+    `
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      status: 200,
+      data: mockTranslateHtml
+    })
+
+    checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
+
+    await vi.runAllTimersAsync()
+
+    expect(axios.get).toHaveBeenCalledTimes(2)
+    expect(axios.get).toHaveBeenNthCalledWith(1, 'https://m.happymh.com/manga/xielingfuti', expect.any(Object))
+    expect(axios.get).toHaveBeenNthCalledWith(
+      2,
+      'https://translate.google.com/translate?sl=auto&tl=zh-TW&u=https%3A%2F%2Fm.happymh.com%2Fmanga%2Fxielingfuti',
+      expect.any(Object)
+    )
+
+    expect(mockMessage.channel.send).toHaveBeenCalled()
+  })
 })

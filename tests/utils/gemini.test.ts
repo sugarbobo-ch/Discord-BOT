@@ -1,10 +1,12 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   checkImageNSFW,
   chatWithBobo,
   roastTypo,
   detectStocksWithAI,
-  cleanLatexSymbols
+  cleanLatexSymbols,
+  getApiKeys,
+  executeGenAI
 } from '../../src/utils/gemini'
 import { getStockPrice } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
@@ -511,6 +513,83 @@ describe('Gemini Utility Tests', () => {
       expect(quoteSpy).toHaveBeenNthCalledWith(2, '8069.TWO')
       expect(result.symbol).toBe('8069.TWO')
       expect(result.price).toBe(80)
+    })
+  })
+
+  describe('API Key Rotation and Switching', () => {
+    let originalEnvKeys: string | undefined
+    let originalEnvKey: string | undefined
+
+    beforeEach(() => {
+      originalEnvKeys = process.env.GEMINI_API_KEYS
+      originalEnvKey = process.env.GEMINI_API_KEY
+    })
+
+    afterEach(() => {
+      process.env.GEMINI_API_KEYS = originalEnvKeys
+      process.env.GEMINI_API_KEY = originalEnvKey
+    })
+
+    test('should parse API keys from env and config', () => {
+      process.env.GEMINI_API_KEYS = 'env_key1, env_key2'
+      process.env.GEMINI_API_KEY = 'env_key3'
+
+      const keys = getApiKeys()
+      const keyStrings = keys.map(k => k.key)
+
+      expect(keyStrings).toContain('env_key1')
+      expect(keyStrings).toContain('env_key2')
+      expect(keyStrings).toContain('env_key3')
+      expect(keyStrings.length).toBeGreaterThanOrEqual(3)
+    })
+
+    test('should rotate keys when a rate limit/quota error is encountered', async () => {
+      process.env.GEMINI_API_KEYS = 'rate_limit_key1, rate_limit_key2'
+      // Clear key list cache
+      getApiKeys()
+
+      // First call fails with 429
+      mockGenerateContent.mockRejectedValueOnce({
+        status: 429,
+        message: 'Quota exceeded'
+      })
+      // Second call succeeds
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'Success on key 2' }] } }]
+      })
+
+      const reply = await executeGenAI((ai) => ai.models.generateContent({
+        model: 'model',
+        contents: [{ parts: [{ text: 'test' }] }]
+      }))
+
+      expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success on key 2')
+      
+      // Verify first key is put on cooldown
+      const keys = getApiKeys()
+      const firstKey = keys.find(k => k.key === 'rate_limit_key1')
+      expect(firstKey?.cooldownUntil).toBeGreaterThan(Date.now())
+    })
+
+    test('should select the key closest to expiring if all are on cooldown', async () => {
+      process.env.GEMINI_API_KEYS = 'cooldown_key1, cooldown_key2'
+      const keys = getApiKeys()
+      
+      // Set both on cooldown
+      const now = Date.now()
+      keys[0].cooldownUntil = now + 10000 // expires in 10s
+      keys[1].cooldownUntil = now + 20000 // expires in 20s
+
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'Success' }] } }]
+      })
+
+      const reply = await executeGenAI((ai) => ai.models.generateContent({
+        model: 'model',
+        contents: [{ parts: [{ text: 'test' }] }]
+      }))
+
+      expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success')
     })
   })
 })

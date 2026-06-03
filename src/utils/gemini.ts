@@ -60,23 +60,139 @@ const logAIResponse = (label: string, status: number, response: any) => {
   })
 }
 
+interface ApiKeyInfo {
+  key: string
+  cooldownUntil: number
+}
+
+let apiKeysList: ApiKeyInfo[] = []
+
+/**
+ * Get all unique configured API keys.
+ * Preserves the cooldown status of keys across calls.
+ */
+export const getApiKeys = (): ApiKeyInfo[] => {
+  const rawKeys: string[] = []
+
+  if (process.env.GEMINI_API_KEYS) {
+    rawKeys.push(...process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()))
+  }
+  if (process.env.GEMINI_API_KEY) {
+    rawKeys.push(process.env.GEMINI_API_KEY.trim())
+  }
+  if (Array.isArray((auth as any).geminiApiKeys)) {
+    rawKeys.push(...((auth as any).geminiApiKeys as string[]).map(k => k.trim()))
+  }
+  if ((auth as any).geminiApiKey) {
+    rawKeys.push(((auth as any).geminiApiKey as string).trim())
+  }
+  if ((auth as any).geminiApiKeyNew) {
+    rawKeys.push(((auth as any).geminiApiKeyNew as string).trim())
+  }
+
+  const uniqueKeys = Array.from(new Set(rawKeys.filter(Boolean)))
+
+  // Preserve cooldown status
+  const existingMap = new Map<string, number>()
+  for (const info of apiKeysList) {
+    existingMap.set(info.key, info.cooldownUntil)
+  }
+
+  apiKeysList = uniqueKeys.map(key => ({
+    key,
+    cooldownUntil: existingMap.get(key) || 0
+  }))
+
+  return apiKeysList
+}
+
 const getApiKey = (): string => {
-  return process.env.GEMINI_API_KEY || (auth as any).geminiApiKey || ''
+  const keys = getApiKeys()
+  if (keys.length === 0) return ''
+  const now = Date.now()
+  const available = keys.find(k => k.cooldownUntil <= now)
+  if (available) return available.key
+  // Fallback to the one with the earliest cooldown expiry
+  return keys.reduce((earliest, current) =>
+    current.cooldownUntil < earliest.cooldownUntil ? current : earliest
+  , keys[0]).key
 }
 
 let aiInstance: GoogleGenAI | null = null
 let lastUsedApiKey = ''
 
-const getAiClient = (): GoogleGenAI => {
-  const apiKey = getApiKey()
-  if (!apiKey) {
+const getAiClient = (apiKey?: string): GoogleGenAI => {
+  const key = apiKey || getApiKey()
+  if (!key) {
     throw new Error('Gemini API key is not configured.')
   }
-  if (!aiInstance || lastUsedApiKey !== apiKey) {
-    aiInstance = new GoogleGenAI({ apiKey })
-    lastUsedApiKey = apiKey
+  if (!aiInstance || lastUsedApiKey !== key) {
+    aiInstance = new GoogleGenAI({ apiKey: key })
+    lastUsedApiKey = key
   }
   return aiInstance
+}
+
+/**
+ * Executes a Gemini API function with key rotation and retries when rate limits or quotas are hit.
+ */
+export const executeGenAI = async <T>(
+  fn: (ai: GoogleGenAI) => Promise<T>
+): Promise<T> => {
+  const keys = getApiKeys()
+  if (keys.length === 0) {
+    throw new Error('Gemini API key is not configured.')
+  }
+
+  const triedKeys = new Set<string>()
+  let lastError: any = null
+
+  for (let attempt = 0; attempt < keys.length; attempt++) {
+    const now = Date.now()
+    const availableKeys = keys.filter(k => !triedKeys.has(k.key))
+    if (availableKeys.length === 0) {
+      break
+    }
+
+    // Pick the best key:
+    // 1. One that is not on cooldown.
+    // 2. Otherwise, the one with the earliest cooldown expiration.
+    let selectedKeyInfo = availableKeys.find(k => k.cooldownUntil <= now)
+    if (!selectedKeyInfo) {
+      selectedKeyInfo = availableKeys.reduce((earliest, current) =>
+        current.cooldownUntil < earliest.cooldownUntil ? current : earliest
+      , availableKeys[0])
+    }
+
+    const key = selectedKeyInfo.key
+    triedKeys.add(key)
+
+    try {
+      const ai = getAiClient(key)
+      return await fn(ai)
+    } catch (error: any) {
+      lastError = error
+      const status = error.status || error.response?.status
+      const errorMessage = error.message || ''
+      const isQuotaOrRateLimit =
+        status === 429 ||
+        errorMessage.includes('RESOURCE_EXHAUSTED') ||
+        errorMessage.toLowerCase().includes('quota') ||
+        errorMessage.toLowerCase().includes('limit')
+
+      if (isQuotaOrRateLimit) {
+        console.warn(`[Gemini API Key Rate Limited] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+        selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
+      } else if (status === 403 || status === 401) {
+        console.warn(`[Gemini API Key Auth/Permission Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+        selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
+      } else {
+        throw error
+      }
+    }
+  }
+
+  throw lastError || new Error('All API keys failed or none configured.')
 }
 
 /**
@@ -136,8 +252,7 @@ export const checkImageNSFW = async (
   const base64Image = imageBuffer.toString('base64')
 
   try {
-    const ai = getAiClient()
-    const response = await ai.models.generateContent({
+    const response = await executeGenAI((ai) => ai.models.generateContent({
       model: MODEL_NAME,
       contents: [
         {
@@ -159,7 +274,7 @@ export const checkImageNSFW = async (
           thinkingLevel: ThinkingLevel.MINIMAL
         }
       }
-    })
+    }))
 
     const resultText = getResponseText(response)
     if (resultText) {
@@ -280,8 +395,7 @@ export const detectStocksWithAI = async (
   apiKey: string
 ): Promise<StockAnalysisResult> => {
   try {
-    const ai = getAiClient()
-    const response = await ai.models.generateContent({
+    const response = await executeGenAI((ai) => ai.models.generateContent({
       model: MODEL_NAME,
       contents: [
         {
@@ -311,7 +425,7 @@ export const detectStocksWithAI = async (
           thinkingLevel: ThinkingLevel.MINIMAL
         }
       }
-    })
+    }))
 
     const resultText = getResponseText(response)
     if (resultText) {
@@ -442,7 +556,6 @@ export const chatWithBobo = async (
   }
 
   try {
-    const ai = getAiClient()
     const initialParts: any[] = [
       {
         text: systemPrompt
@@ -509,7 +622,7 @@ export const chatWithBobo = async (
 
       let response: any
       try {
-        response = await ai.models.generateContent({
+        response = await executeGenAI((ai) => ai.models.generateContent({
           model: MODEL_NAME,
           contents,
           config: {
@@ -521,7 +634,7 @@ export const chatWithBobo = async (
               thinkingLevel: ThinkingLevel.MINIMAL
             }
           }
-        })
+        }))
       } catch (error: any) {
         const hasGoogleSearch = tools.some((t: any) => t.googleSearch)
         if (
@@ -534,7 +647,7 @@ export const chatWithBobo = async (
             `[Gemini Chat API Error] Encountered 500 error with googleSearch tool. Retrying without googleSearch... Error: ${error.message}`
           )
           const backupTools = tools.filter((t: any) => !t.googleSearch)
-          response = await ai.models.generateContent({
+          response = await executeGenAI((ai) => ai.models.generateContent({
             model: MODEL_NAME,
             contents,
             config: {
@@ -546,7 +659,7 @@ export const chatWithBobo = async (
                 thinkingLevel: ThinkingLevel.MINIMAL
               }
             }
-          })
+          }))
         } else {
           throw error
         }
@@ -721,8 +834,7 @@ export const roastTypo = async (
   }
 
   try {
-    const ai = getAiClient()
-    const response = await ai.models.generateContent({
+    const response = await executeGenAI((ai) => ai.models.generateContent({
       model: MODEL_NAME,
       contents: [
         {
@@ -738,7 +850,7 @@ export const roastTypo = async (
           thinkingLevel: ThinkingLevel.MINIMAL
         }
       }
-    })
+    }))
 
     const text = getResponseText(response)
     if (!text) {
