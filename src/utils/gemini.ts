@@ -61,6 +61,31 @@ const getApiKey = (): string => {
 }
 
 /**
+ * 清理 LaTeX 符號，將其轉換為適用於 Discord 顯示的純文字或一般 Markdown
+ */
+export function cleanLatexSymbols(text: string): string {
+  let cleaned = text
+
+  // 1. 替換 LaTeX 常見數學/箭頭符號
+  cleaned = cleaned.replace(/\\rightarrow/g, '→')
+  cleaned = cleaned.replace(/\\sim/g, '~')
+  cleaned = cleaned.replace(/\\le/g, '≤')
+  cleaned = cleaned.replace(/\\ge/g, '≥')
+  cleaned = cleaned.replace(/\\times/g, '×')
+
+  // 2. 移除 \text{...} 包裝並保留其內容
+  cleaned = cleaned.replace(/\\text\s*\{([^}]+)\}/g, '$1')
+
+  // 3. 移除 $ 包裝，但排除跨越句號、逗號或換行（防範兩個獨立美金符號誤判）
+  cleaned = cleaned.replace(/\$([^$\n。，,;！？!?]+)\$/g, '$1')
+
+  // 4. Discord 不支援四級（含）以上的標題，將其轉換為三級標題 (###)
+  cleaned = cleaned.replace(/^(#{4,6})\s+(.+)$/gm, '### $2')
+
+  return cleaned
+}
+
+/**
  * 提取 Gemini 回應的文字內容（過濾掉思考過程 thought）
  */
 const getResponseText = (response: any): string => {
@@ -68,11 +93,12 @@ const getResponseText = (response: any): string => {
   if (!candidate || !candidate.content || !candidate.content.parts) {
     return ''
   }
-  return candidate.content.parts
+  const rawText = candidate.content.parts
     .filter((part: any) => !part.thought)
     .map((part: any) => part.text || '')
     .join('')
     .trim()
+  return cleanLatexSymbols(rawText)
 }
 
 /**
@@ -195,7 +221,9 @@ const hasPromptInjection = (text: string): boolean => {
 const ANALYST_SYSTEM_PROMPT =
   '你是一個專業的投資分析師以及基金經理人，擅長製作產業分析，以及判斷趨勢，公司的體質營收等，你會過濾掉市場的雜訊，查看法說會最新的報告，並給予買賣建議價碼，我將會給你客戶的標的，你必須分析它是產業龍頭、飆股性質等，給出不同的建議。你必須查詢市場當前價格，不要使用資料庫的股價。請以專業且客觀的分析師語氣，使用繁體中文回覆。\n\n' +
   '【格式規範 - 極其重要】\n' +
-  '請使用適合 Discord 顯示的純文字或 Discord Markdown 格式（例如粗體、清單、代碼塊），「絕對不能」使用 LaTeX 數學公式格式（例如使用 $ 符號包覆的公式、\\text{...}、\\rightarrow 等），應直接使用一般字串或箭頭符號（如 `28.6 (成本) -> 33 (減碼) -> 40 (獲利) -> 出場`）表示流程。\n\n' +
+  '1. 請使用適合 Discord 顯示的純文字或 Discord Markdown 格式（例如粗體、清單、代碼塊），「絕對不能」使用 LaTeX 數學公式格式（例如使用 $ 符號包覆的公式、\\text{...}、\\rightarrow 等），應直接使用一般字串或箭頭符號（如 `28.6 (成本) -> 33 (減碼) -> 40 (獲利) -> 出場`）表示流程。\n' +
+  '2. Discord 標題最高僅支援到三級標題（即 `###`），「絕對不能」使用四級或更低階標題（如 `####`、`#####` 等，這些在 Discord 會直接渲染成純文字井字號）。若需要小標題請一律使用 `###` 或粗體 `**小標題**`。\n' +
+  '3. Discord 不支援 Markdown 表格語法（如 `|` 與 `-` 組成的表格），請「絕對不要」輸出表格語法，若有表格資料請改用條列清單或粗體排版表示。\n\n' +
   '【對話脈絡關聯與上下文拼湊】\n' +
   '近期的對話脈絡是以時間「由新到舊（最新一筆在最上面）」排列並附有熱度權重，最新一筆權重為 1.00。請先根據熱度權重與對話語意，合理拼湊並梳理上下文的關聯性。如果最新訊息與先前話題無關（先前話題熱度權重低且語意不相關），請直接針對最新一筆訊息（熱度權重 1.00）進行分析與建議，切勿生硬地強行關聯或提及過去的舊話題。\n\n' +
   '【安全與隱私防線 - 極其重要】\n' +

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { checkImageNSFW, chatWithBobo, roastTypo, detectStocksWithAI } from '../../src/utils/gemini'
+import { checkImageNSFW, chatWithBobo, roastTypo, detectStocksWithAI, cleanLatexSymbols } from '../../src/utils/gemini'
 import yahooFinance from 'yahoo-finance2'
 
 vi.mock('axios')
@@ -370,6 +370,31 @@ describe('Gemini Utility Tests', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  describe('cleanLatexSymbols', () => {
+    test('should clean simple LaTeX symbols and text wrappers', () => {
+      expect(cleanLatexSymbols('$\\sim$')).toBe('~')
+      expect(cleanLatexSymbols('$\\rightarrow$')).toBe('→')
+      expect(cleanLatexSymbols('$\\text{成本}$')).toBe('成本')
+      expect(cleanLatexSymbols('$28.6 (\\text{成本}) \\rightarrow 33 (\\text{減碼}) \\rightarrow 40 (\\text{獲利}) \\rightarrow \\text{出場}$'))
+        .toBe('28.6 (成本) → 33 (減碼) → 40 (獲利) → 出場')
+    })
+
+    test('should ignore independent dollar signs like currency values', () => {
+      expect(cleanLatexSymbols('這張卡片價值 $100 美元。另外那張價值 $200 美元。'))
+        .toBe('這張卡片價值 $100 美元。另外那張價值 $200 美元。')
+    })
+
+    test('should replace LaTeX inequality symbols', () => {
+      expect(cleanLatexSymbols('$\\le 30$')).toBe('≤ 30')
+      expect(cleanLatexSymbols('$\\ge 40$')).toBe('≥ 40')
+    })
+
+    test('should convert unsupported heading levels to level 3', () => {
+      expect(cleanLatexSymbols('#### 聯發科')).toBe('### 聯發科')
+      expect(cleanLatexSymbols('##### 產業前景')).toBe('### 產業前景')
+    })
   })
 
   describe('detectStocksWithAI', () => {
