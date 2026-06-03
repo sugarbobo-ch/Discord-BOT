@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { checkImageNSFW, chatWithBobo, roastTypo } from '../../src/utils/gemini'
+import { checkImageNSFW, chatWithBobo, roastTypo, detectStocksWithAI } from '../../src/utils/gemini'
 import yahooFinance from 'yahoo-finance2'
 
 vi.mock('axios')
@@ -311,24 +311,31 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('chatWithBobo should pre-fetch stock price and inject it into system prompt when prompt contains a ticker', async () => {
-    vi.mocked(axios.post).mockResolvedValue({
-      data: {
-        candidates: [{ content: { parts: [{ text: '台積電股價是 600 元。' }] } }]
-      }
-    })
+    vi.mocked(axios.post)
+      .mockResolvedValueOnce({
+        data: {
+          candidates: [{ content: { parts: [{ text: '{"isMentioningStock": true, "stocks": [{"name": "台積電", "ticker": "2330.TW"}]}' }] } }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          candidates: [{ content: { parts: [{ text: '台積電股價是 600 元。' }] } }]
+        }
+      })
 
     const reply = await chatWithBobo('幫我查 2330 股價', 'user_stock_test')
     expect(reply).toBe('台積電股價是 600 元。')
 
-    // 驗證第一次 Axios POST 帶有預取的股價資訊
-    expect(axios.post).toHaveBeenCalledWith(
+    // 驗證第二次 Axios POST 帶有預取的對照表股價資訊
+    expect(axios.post).toHaveBeenNthCalledWith(
+      2,
       expect.any(String),
       expect.objectContaining({
         contents: expect.arrayContaining([
           expect.objectContaining({
             parts: expect.arrayContaining([
               expect.objectContaining({
-                text: expect.stringContaining('2330.TW 最新數據 (price: 600, currency: TWD)')
+                text: expect.stringContaining('股票名稱: 台積電 (代號: 2330.TW) 最新數據 (price: 600, currency: TWD)')
               })
             ])
           })
@@ -336,5 +343,78 @@ describe('Gemini Utility Tests', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  test('chatWithBobo should include user distinction prompt and authorName in API payload when provided', async () => {
+    vi.mocked(axios.post).mockResolvedValueOnce({
+      data: {
+        candidates: [{ content: { parts: [{ text: '好的，大華，我已經知道了。' }] } }]
+      }
+    })
+
+    const reply = await chatWithBobo('哈囉', 'user_distinction', undefined, undefined, undefined, undefined, '大華')
+    expect(reply).toBe('好的，大華，我已經知道了。')
+
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining('當前對你說話的使用者是「大華」')
+              })
+            ])
+          })
+        ])
+      }),
+      expect.any(Object)
+    )
+  })
+
+  describe('detectStocksWithAI', () => {
+    test('should query Gemini and return parsed stock mentions', async () => {
+      vi.mocked(axios.post).mockResolvedValueOnce({
+        data: {
+          candidates: [{ content: { parts: [{ text: '{"isMentioningStock": true, "stocks": [{"name": "聯發科", "ticker": "2454.TW"}]}' }] } }]
+        }
+      })
+
+      const result = await detectStocksWithAI('發哥最新股價？', 'test_key')
+      expect(result).toEqual({
+        isMentioningStock: true,
+        stocks: [{ name: '聯發科', ticker: '2454.TW' }]
+      })
+
+      expect(axios.post).toHaveBeenCalledWith(
+        expect.stringContaining('gemma-4-31b-it:generateContent'),
+        expect.objectContaining({
+          contents: expect.arrayContaining([
+            expect.objectContaining({
+              parts: expect.arrayContaining([
+                expect.objectContaining({
+                  text: expect.stringContaining('發哥')
+                })
+              ])
+            })
+          ])
+        }),
+        expect.any(Object)
+      )
+    })
+
+    test('should map 牙科 to 南亞科 ticker 2408.TW', async () => {
+      vi.mocked(axios.post).mockResolvedValueOnce({
+        data: {
+          candidates: [{ content: { parts: [{ text: '{"isMentioningStock": true, "stocks": [{"name": "南亞科", "ticker": "2408.TW"}]}' }] } }]
+        }
+      })
+
+      const result = await detectStocksWithAI('牙科可以買嗎？', 'test_key')
+      expect(result).toEqual({
+        isMentioningStock: true,
+        stocks: [{ name: '南亞科', ticker: '2408.TW' }]
+      })
+    })
   })
 })

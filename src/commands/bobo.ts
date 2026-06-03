@@ -75,9 +75,15 @@ export class BoboCommand implements Command {
       prompt = '這張圖片是什麼？請跟我聊聊。'
     }
 
+    let typingInterval: NodeJS.Timeout | undefined
     try {
       // 在等待 AI 回應時顯示「正在輸入...」狀態
       await (message.channel as any).sendTyping()
+      typingInterval = setInterval(() => {
+        (message.channel as any).sendTyping().catch((err: any) => {
+          console.error('Failed to send typing indicator:', err.message)
+        })
+      }, 5000)
 
       const limit = (auth as any).chatMemoryLimit || 50
       let channelHistoryContext = ''
@@ -271,6 +277,7 @@ export class BoboCommand implements Command {
 
       let statusMessage: any = null
 
+      const currentAuthorName = message.member?.displayName || message.author.username
       const reply = await chatWithBobo(
         prompt,
         message.author.id,
@@ -287,7 +294,8 @@ export class BoboCommand implements Command {
           } catch (msgErr: any) {
             console.error('Failed to send status update in Discord:', msgErr.message)
           }
-        }
+        },
+        currentAuthorName
       )
       
       // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
@@ -319,6 +327,10 @@ export class BoboCommand implements Command {
     } catch (error: any) {
       console.error('Error in BoboCommand:', error.message)
       message.reply('波波出錯了，無法回應。')
+    } finally {
+      if (typingInterval) {
+        clearInterval(typingInterval)
+      }
     }
   }
 }
