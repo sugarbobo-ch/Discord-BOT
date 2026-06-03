@@ -328,6 +328,10 @@ export class BoboCommand implements Command {
             } else {
               await statusMessage.edit(statusText)
             }
+            // 編輯狀態訊息後重新觸發「正在輸入...」狀態，確保指示器在後續查詢中持續保有
+            await (message.channel as any).sendTyping().catch((err: any) => {
+              console.error('Failed to send typing indicator after status update:', err.message)
+            })
           } catch (msgErr: any) {
             console.error('Failed to send status update in Discord:', msgErr.message)
           }

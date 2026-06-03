@@ -332,7 +332,12 @@ export function clearStockCache(): void {
 export async function searchStockTickerWithYahoo(query: string): Promise<{ symbol: string; name: string } | null> {
   const url = `https://tw.stock.yahoo.com/stock_ms/_td-stock/api/resource/AutocompleteService;query=${encodeURIComponent(query)}`
   try {
-    const response = await axios.get(url, { timeout: 5000 })
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 5000
+    })
     const results = response.data?.ResultSet?.Result
     if (Array.isArray(results) && results.length > 0) {
       // 優先尋找類型為 S (股票/Equity) 或 ETF 的結果
@@ -381,3 +386,11 @@ export async function fetchStockNameFromYahooPage(symbol: string): Promise<strin
   return null
 }
 
+/**
+ * 清理股票名稱中的常見公司後綴，以便於模糊搜尋或對照
+ */
+export function cleanStockNameForSearch(name: string): string {
+  return name
+    .replace(/(?:股份有限公司|有限公司|股份|公司|集團|科技|工業|控股|精密|資通|物聯網|模組|電腦|Co\.|Ltd\.|Inc\.)/g, '')
+    .trim()
+}

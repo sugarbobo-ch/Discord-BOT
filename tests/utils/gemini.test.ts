@@ -10,7 +10,7 @@ import {
   getApiKeys,
   executeGenAI
 } from '../../src/utils/gemini'
-import { getStockPrice } from '../../src/utils/stock'
+import { getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
 
 // Hoisted mock function for generateContent
@@ -33,11 +33,19 @@ vi.mock('@google/genai', async (importOriginal) => {
 })
 
 vi.mock('yahoo-finance2')
+vi.mock('../../src/utils/stock', async (importOriginal) => {
+  const actual = await importOriginal() as any
+  return {
+    ...actual,
+    searchStockTickerWithYahoo: vi.fn().mockResolvedValue(null)
+  }
+})
 
 describe('Gemini Utility Tests', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     process.env.GEMINI_API_KEY = 'test_key'
+    vi.mocked(searchStockTickerWithYahoo).mockResolvedValue(null)
     vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValue({
       regularMarketPrice: 600,
       currency: 'TWD'
@@ -367,6 +375,111 @@ describe('Gemini Utility Tests', () => {
     )
   })
 
+  test('chatWithBobo should correct hallucinated stock ticker using Yahoo Finance autocomplete', async () => {
+    vi.mocked(searchStockTickerWithYahoo).mockResolvedValueOnce({
+      symbol: '2324.TW',
+      name: '仁寶'
+    })
+
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "仁寶", "ticker": "2395.TW"}]}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '仁寶股價是 35 元。' }] } }]
+      })
+
+    const reply = await chatWithBobo('仁寶會漲到150嗎', 'user_stock_correct_test')
+    expect(reply).toBe('仁寶股價是 35 元。')
+
+    // 驗證 searchStockTickerWithYahoo 被正確呼叫了「仁寶」
+    expect(searchStockTickerWithYahoo).toHaveBeenCalledWith('仁寶')
+
+    // 驗證第二次呼叫中，預取的代號已經從 2395.TW 修正為 2324.TW
+    expect(mockGenerateContent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining(
+                  '股票名稱: 仁寶 (代號: 2324.TW) 最新數據'
+                )
+              })
+            ])
+          })
+        ])
+      })
+    )
+  })
+
+  test('chatWithBobo should clean stock names and match them correctly', async () => {
+    // 1. 直得科技 -> 直得 -> 1597.TW (Yahoo)
+    vi.mocked(searchStockTickerWithYahoo).mockResolvedValueOnce({
+      symbol: '1597.TW',
+      name: '直得'
+    })
+
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "直得科技", "ticker": "3653.TW"}, {"name": "蘋果公司", "ticker": "02001L.TW"}]}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '好的。' }] } }]
+      })
+
+    await chatWithBobo('分析直得科技跟蘋果公司買在185元', 'user_stock_clean_test')
+
+    // 驗證 searchStockTickerWithYahoo 被呼叫了清理後的「直得」，而「蘋果公司」清理後是「蘋果」直接在 COMMON_STOCK_MAP 中匹配，因此不呼叫 searchStockTickerWithYahoo('蘋果')
+    expect(searchStockTickerWithYahoo).toHaveBeenCalledWith('直得')
+    expect(searchStockTickerWithYahoo).not.toHaveBeenCalledWith('蘋果')
+    expect(searchStockTickerWithYahoo).not.toHaveBeenCalledWith('蘋果公司')
+
+    // 驗證第二次呼叫的系統提示詞中，直得科技已修正為 1597.TW，蘋果公司已修正為 AAPL
+    expect(mockGenerateContent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining(
+                  '股票名稱: 直得科技 (代號: 1597.TW) 最新數據'
+                )
+              }),
+              expect.objectContaining({
+                text: expect.stringContaining(
+                  '股票名稱: 蘋果公司 (代號: AAPL) 最新數據'
+                )
+              })
+            ])
+          })
+        ])
+      })
+    )
+  })
+
   test('chatWithBobo should include user distinction prompt and authorName in API payload when provided', async () => {
     mockGenerateContent.mockResolvedValueOnce({
       candidates: [{ content: { parts: [{ text: '好的，大華，我已經知道了。' }] } }]
@@ -399,6 +512,65 @@ describe('Gemini Utility Tests', () => {
         ])
       })
     )
+  })
+
+  test('chatWithBobo should execute functionCall, and exclude googleSearch from tools in the second loop call', async () => {
+    // Mock the first call to return a functionCall for get_stock_price
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    name: 'get_stock_price',
+                    args: { tickerSymbol: 'DELL' },
+                    id: 'test_call_id'
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      })
+      // Mock the second call to return the final answer
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: 'DELL 的股價是 413.68 美元。'
+                }
+              ]
+            }
+          }
+        ]
+      })
+
+    // We mock the stock price lookup
+    vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValueOnce({
+      regularMarketPrice: 413.68,
+      currency: 'USD',
+      displayName: 'Dell Technologies Inc.'
+    } as any)
+
+    const reply = await chatWithBobo('哈囉', 'user_test_loop')
+
+    expect(reply).toBe('DELL 的股價是 413.68 美元。')
+
+    // Expect mockGenerateContent to be called twice in chatWithBobo
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+
+    const firstCallArgs = mockGenerateContent.mock.calls[0][0]
+    const secondCallArgs = mockGenerateContent.mock.calls[1][0]
+
+    // First call should have googleSearch in tools
+    expect(firstCallArgs.config.tools).toContainEqual({ googleSearch: {} })
+
+    // Second call should NOT have googleSearch in tools
+    expect(secondCallArgs.config.tools).not.toContainEqual({ googleSearch: {} })
   })
 
   describe('cleanLatexSymbols', () => {
