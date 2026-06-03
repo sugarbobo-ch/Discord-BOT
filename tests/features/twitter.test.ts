@@ -92,7 +92,9 @@ describe('Twitter Embed Fixer Feature Tests', () => {
     await vi.runAllTimersAsync()
 
     expect(mockChannel.messages.fetch).toHaveBeenCalledWith('123')
-    expect(mockChannel.send).toHaveBeenCalledWith('check this: https://fixvx.com/user/status/123456')
+    expect(mockChannel.send).toHaveBeenCalledWith(
+      'check this: https://fixvx.com/user/status/123456'
+    )
   })
 
   test('should do nothing if x.com link exists but twitter detection setting is disabled', async () => {

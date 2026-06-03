@@ -177,8 +177,9 @@ export const getRandomFile = async (type: string, dir: string): Promise<string |
     console.log(error)
     const targetDir = 'assets/' + type + '/' + dir + '/'
     try {
-      const files = (await fs.promises.readdir(targetDir))
-        .filter(text => imageRexExp.test(text) && text.length > 0)
+      const files = (await fs.promises.readdir(targetDir)).filter(
+        text => imageRexExp.test(text) && text.length > 0
+      )
       const file = files[Math.floor(Math.random() * files.length)]
       if (file === undefined) {
         return null
@@ -197,7 +198,11 @@ export const checkFileDirectoryIsExist = (dir: string): boolean => {
   return fs.existsSync(dir)
 }
 
-export const removeFile = async (dir: string, fileName: string, indexFileName: string): Promise<void> => {
+export const removeFile = async (
+  dir: string,
+  fileName: string,
+  indexFileName: string
+): Promise<void> => {
   try {
     await fs.promises.unlink(`${dir}/${fileName}`)
     await removeFileFromIndexFile(dir, fileName, indexFileName)

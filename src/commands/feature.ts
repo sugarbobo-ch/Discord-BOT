@@ -7,7 +7,9 @@ export class FeatureCommand implements Command {
   public execute(message: Message, args: string[]): void {
     const embed = new EmbedBuilder()
       .setTitle('🤖 波波 (Bobo) 機器人功能介紹')
-      .setDescription('我是波波，一個多功能又帶點幽默的 Discord 機器人助手！以下是我的主要功能介紹：')
+      .setDescription(
+        '我是波波，一個多功能又帶點幽默的 Discord 機器人助手！以下是我的主要功能介紹：'
+      )
       .setColor(0x3498db) // 質感藍色
       .addFields(
         {

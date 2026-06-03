@@ -12,9 +12,15 @@ describe('SQLite Database Tests', () => {
     expect(db).toBeDefined()
 
     // 檢查資料表是否存在
-    const serversTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='servers'").get()
-    const commandsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='commands'").get()
-    const settingsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get()
+    const serversTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='servers'")
+      .get()
+    const commandsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='commands'")
+      .get()
+    const settingsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
+      .get()
 
     expect(serversTable).toBeDefined()
     expect(serversTable.name).toBe('servers')
@@ -37,7 +43,9 @@ describe('SQLite Database Tests', () => {
 
     // 刪除
     db.prepare('DELETE FROM servers WHERE server_id = ?').run(testServerId)
-    const rowAfter = db.prepare('SELECT server_id FROM servers WHERE server_id = ?').get(testServerId)
+    const rowAfter = db
+      .prepare('SELECT server_id FROM servers WHERE server_id = ?')
+      .get(testServerId)
     expect(rowAfter).toBeUndefined()
   })
 
@@ -46,25 +54,34 @@ describe('SQLite Database Tests', () => {
     db.prepare('INSERT OR IGNORE INTO servers (server_id) VALUES (?)').run(testServerId)
 
     // 新增自訂指令
-    db.prepare('INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)')
-      .run(testServerId, 'hello', 'world')
+    db.prepare('INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)').run(
+      testServerId,
+      'hello',
+      'world'
+    )
 
-    const cmd = db.prepare('SELECT response FROM commands WHERE server_id = ? AND name = ?')
+    const cmd = db
+      .prepare('SELECT response FROM commands WHERE server_id = ? AND name = ?')
       .get(testServerId, 'hello')
     expect(cmd).toBeDefined()
     expect(cmd.response).toBe('world')
 
     // 更新自訂指令
-    db.prepare('INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)')
-      .run(testServerId, 'hello', 'universe')
+    db.prepare('INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)').run(
+      testServerId,
+      'hello',
+      'universe'
+    )
 
-    const cmdUpdated = db.prepare('SELECT response FROM commands WHERE server_id = ? AND name = ?')
+    const cmdUpdated = db
+      .prepare('SELECT response FROM commands WHERE server_id = ? AND name = ?')
       .get(testServerId, 'hello')
     expect(cmdUpdated.response).toBe('universe')
 
     // 刪除自訂指令
     db.prepare('DELETE FROM commands WHERE server_id = ? AND name = ?').run(testServerId, 'hello')
-    const cmdDeleted = db.prepare('SELECT response FROM commands WHERE server_id = ? AND name = ?')
+    const cmdDeleted = db
+      .prepare('SELECT response FROM commands WHERE server_id = ? AND name = ?')
       .get(testServerId, 'hello')
     expect(cmdDeleted).toBeUndefined()
 

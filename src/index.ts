@@ -1,4 +1,13 @@
-import { Client, GatewayIntentBits, Message, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js'
+import {
+  Client,
+  GatewayIntentBits,
+  Message,
+  PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder
+} from 'discord.js'
 import auth from '../config/auth.json'
 import * as messageCtrl from './features/message'
 import * as nsfwCtrl from './features/nsfw'
@@ -15,6 +24,7 @@ import { SettingCommand } from './commands/setting'
 import { FeatureCommand } from './commands/feature'
 import { roastTypo } from './utils/gemini'
 import { checkAndFixTwitterEmbed } from './features/twitter'
+import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
 import { setTwitterSetting, getTwitterSetting } from './utils/db'
 
 let count = 0
@@ -65,7 +75,9 @@ client.on('ready', async () => {
       // 2. 伺服器級註冊 (即時生效，方便開發與測試)
       for (const guild of client.guilds.cache.values()) {
         await guild.commands.set(commandsData)
-        console.log(`Successfully registered Discord Slash Commands for guild: ${guild.name} (${guild.id})`)
+        console.log(
+          `Successfully registered Discord Slash Commands for guild: ${guild.name} (${guild.id})`
+        )
       }
     }
   } catch (error) {
@@ -108,7 +120,11 @@ client.on('messageCreate', async (message: Message) => {
     const typos = ['因該', '以經', '部會', '絕得', '在一次']
     const foundTypo = typos.find(typo => message.content.includes(typo))
     if (foundTypo) {
-      const roast = await roastTypo(message.content, foundTypo, message.guild?.id || message.author.id)
+      const roast = await roastTypo(
+        message.content,
+        foundTypo,
+        message.guild?.id || message.author.id
+      )
       if (roast) {
         message.reply(roast)
       } else {
@@ -127,6 +143,9 @@ client.on('messageCreate', async (message: Message) => {
     // 偵測 x.com 若沒有產生 embed 則改為 fixvx.com 發送至同頻道
     checkAndFixTwitterEmbed(message)
 
+    // 偵測 R18 網站連結並自動加入 Embed 縮圖與資訊
+    checkAndAddNsfwEmbed(message)
+
     if (!result) {
       return
     }
@@ -139,8 +158,10 @@ client.on('messageCreate', async (message: Message) => {
   }
 })
 
-client.on('interactionCreate', async (interaction) => {
-  console.log(`[Interaction] Received interaction type: ${interaction.type}, isCommand: ${interaction.isChatInputCommand()}, isButton: ${interaction.isButton()}`)
+client.on('interactionCreate', async interaction => {
+  console.log(
+    `[Interaction] Received interaction type: ${interaction.type}, isCommand: ${interaction.isChatInputCommand()}, isButton: ${interaction.isButton()}`
+  )
   try {
     // 1. 處理斜線指令 (Slash Commands)
     if (interaction.isChatInputCommand()) {
@@ -158,7 +179,10 @@ client.on('interactionCreate', async (interaction) => {
           (!permissions.has(PermissionFlagsBits.ManageGuild) &&
             !permissions.has(PermissionFlagsBits.Administrator))
         ) {
-          await interaction.reply({ content: '❌ 只有管理員或擁有「管理伺服器」權限的使用者才能使用此指令。', ephemeral: true })
+          await interaction.reply({
+            content: '❌ 只有管理員或擁有「管理伺服器」權限的使用者才能使用此指令。',
+            ephemeral: true
+          })
           return
         }
 
@@ -182,7 +206,9 @@ client.on('interactionCreate', async (interaction) => {
       } else if (commandName === '功能') {
         const embed = new EmbedBuilder()
           .setTitle('🤖 波波 (Bobo) 機器人功能介紹')
-          .setDescription('我是波波，一個多功能又帶點幽默的 Discord 機器人助手！以下是我的主要功能介紹：')
+          .setDescription(
+            '我是波波，一個多功能又帶點幽默的 Discord 機器人助手！以下是我的主要功能介紹：'
+          )
           .setColor(0x3498db) // 質感藍色
           .addFields(
             {
@@ -247,7 +273,10 @@ client.on('interactionCreate', async (interaction) => {
         (!permissions.has(PermissionFlagsBits.ManageGuild) &&
           !permissions.has(PermissionFlagsBits.Administrator))
       ) {
-        await interaction.reply({ content: '❌ 你沒有權限更改此設定 (需要管理伺服器權限)。', ephemeral: true })
+        await interaction.reply({
+          content: '❌ 你沒有權限更改此設定 (需要管理伺服器權限)。',
+          ephemeral: true
+        })
         return
       }
 
@@ -276,7 +305,10 @@ client.on('interactionCreate', async (interaction) => {
     console.error('Error handling interaction:', error)
     try {
       if (interaction.isRepliable()) {
-        await interaction.reply({ content: '❌ 執行指令時發生內部錯誤，請聯絡開發者。', ephemeral: true })
+        await interaction.reply({
+          content: '❌ 執行指令時發生內部錯誤，請聯絡開發者。',
+          ephemeral: true
+        })
       }
     } catch (replyError) {
       console.error('Failed to send error reply:', replyError)

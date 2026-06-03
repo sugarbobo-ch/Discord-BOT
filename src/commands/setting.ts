@@ -1,4 +1,10 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Message, PermissionFlagsBits } from 'discord.js'
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Message,
+  PermissionFlagsBits
+} from 'discord.js'
 import { Command } from './command.interface'
 import { getTwitterSetting } from '../utils/db'
 

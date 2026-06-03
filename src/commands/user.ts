@@ -41,7 +41,7 @@ export class UserCommand implements Command {
       if (fields.length > 0) {
         embed.addFields(fields)
       }
-      (message.channel as any).send({ embeds: [embed] })
+      ;(message.channel as any).send({ embeds: [embed] })
     }
   }
 }

@@ -20,7 +20,7 @@ describe('Stock Utility Tests', () => {
       // 含有 stock keywords
       expect(extractTickers('幫我查 2330 股價')).toEqual(['2330.TW'])
       expect(extractTickers('台股 2454 開盤了嗎')).toEqual(['2454.TW'])
-      
+
       // 不含 stock keywords
       expect(extractTickers('我明天下午 2330 要去搭高鐵')).toEqual([])
     })
@@ -61,10 +61,10 @@ describe('Stock Utility Tests', () => {
 
       // 第一次呼叫
       await getStockPrice('AAPL')
-      
+
       // 第二次呼叫
       const result = await getStockPrice('AAPL')
-      
+
       expect(result.price).toBe(150.25)
       expect(quoteSpy).toHaveBeenCalledTimes(1) // 只呼叫了一次外部 API
     })

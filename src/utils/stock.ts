@@ -31,7 +31,10 @@ export async function getStockPrice(tickerSymbol: string): Promise<Record<string
   try {
     const quote = (await yahooFinance.quote(normalizedTicker)) as any
     if (!quote || quote.regularMarketPrice === undefined || quote.regularMarketPrice === null) {
-      const errorResult = { symbol: normalizedTicker, error: `找不到股票代碼 "${normalizedTicker}" 的價格資料` }
+      const errorResult = {
+        symbol: normalizedTicker,
+        error: `找不到股票代碼 "${normalizedTicker}" 的價格資料`
+      }
       stockCache.set(normalizedTicker, { data: errorResult, timestamp: now })
       return errorResult
     }
@@ -79,7 +82,10 @@ export async function getStockPrice(tickerSymbol: string): Promise<Record<string
     return successResult
   } catch (error: any) {
     console.error(`[Stock API Error] Failed to fetch ${normalizedTicker}:`, error.message)
-    const errorResult = { symbol: normalizedTicker, error: `查詢股票代碼 "${normalizedTicker}" 時發生錯誤` }
+    const errorResult = {
+      symbol: normalizedTicker,
+      error: `查詢股票代碼 "${normalizedTicker}" 時發生錯誤`
+    }
     // 對於錯誤也快取一小段時間 (比如 10 秒) 以防被重複請求打爆
     stockCache.set(normalizedTicker, { data: errorResult, timestamp: now - CACHE_TTL + 10000 })
     return errorResult
@@ -88,8 +94,73 @@ export async function getStockPrice(tickerSymbol: string): Promise<Record<string
 
 // 常見排除詞 (過濾常用英文詞彙，避免將對話字眼誤認為美股代碼)
 const STOP_WORDS = new Set([
-  'I', 'A', 'AN', 'THE', 'AND', 'OR', 'BUT', 'IF', 'FOR', 'WITH', 'AT', 'BY', 'TO', 'IN', 'ON', 'OF', 'IS', 'AM', 'ARE', 'WAS', 'WERE', 'BE', 'GET', 'GO', 'DO', 'CAN', 'HAS', 'HAVE', 'HOW', 'WHY', 'WHAT', 'WHO', 'YOU', 'WE', 'HE', 'SHE', 'IT', 'THEY', 'THIS', 'THAT', 'HERE', 'THERE', 'NOT', 'SO', 'UP', 'OUT', 'NO', 'YES', 'OK', 'MY', 'ME', 'US', 'HI', 'HEY',
-  'STOCK', 'PRICE', 'TICKER', 'MARKET', 'QUOTE', 'TW', 'TWO', 'USD', 'TWD', 'HKD', 'CNY', 'EUR', 'GBP'
+  'I',
+  'A',
+  'AN',
+  'THE',
+  'AND',
+  'OR',
+  'BUT',
+  'IF',
+  'FOR',
+  'WITH',
+  'AT',
+  'BY',
+  'TO',
+  'IN',
+  'ON',
+  'OF',
+  'IS',
+  'AM',
+  'ARE',
+  'WAS',
+  'WERE',
+  'BE',
+  'GET',
+  'GO',
+  'DO',
+  'CAN',
+  'HAS',
+  'HAVE',
+  'HOW',
+  'WHY',
+  'WHAT',
+  'WHO',
+  'YOU',
+  'WE',
+  'HE',
+  'SHE',
+  'IT',
+  'THEY',
+  'THIS',
+  'THAT',
+  'HERE',
+  'THERE',
+  'NOT',
+  'SO',
+  'UP',
+  'OUT',
+  'NO',
+  'YES',
+  'OK',
+  'MY',
+  'ME',
+  'US',
+  'HI',
+  'HEY',
+  'STOCK',
+  'PRICE',
+  'TICKER',
+  'MARKET',
+  'QUOTE',
+  'TW',
+  'TWO',
+  'USD',
+  'TWD',
+  'HKD',
+  'CNY',
+  'EUR',
+  'GBP'
 ])
 
 /**
@@ -107,7 +178,9 @@ export function extractTickers(text: string): string[] {
   }
 
   // 檢查是否包含股票關鍵字
-  const hasStockKeyword = /股價|股票|行情|個股|收盤|開盤|指數|台股|美股|stock|ticker|price/i.test(normalizedText)
+  const hasStockKeyword = /股價|股票|行情|個股|收盤|開盤|指數|台股|美股|stock|ticker|price/i.test(
+    normalizedText
+  )
 
   if (hasStockKeyword) {
     // 2. 匹配 4 位純數字的台股代碼 (例如 2330，自動補全為 2330.TW)

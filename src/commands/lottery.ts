@@ -19,15 +19,7 @@ interface LotteryInfo {
 const lotteryDict: Record<string, Record<string, LotteryInfo>> = {}
 
 export class LotteryCommand implements Command {
-  public names = [
-    '開始抽獎',
-    '抽獎',
-    '抽獎名單',
-    '開獎',
-    '結束抽獎',
-    '強制結束抽獎',
-    '抽獎指令'
-  ]
+  public names = ['開始抽獎', '抽獎', '抽獎名單', '開獎', '結束抽獎', '強制結束抽獎', '抽獎指令']
 
   public execute(message: Message, args: string[]): void {
     if (!message.guild) return

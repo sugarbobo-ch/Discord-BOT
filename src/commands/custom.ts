@@ -20,7 +20,18 @@ export class CustomCommand implements Command {
   public async execute(message: Message, args: string[]): Promise<void> {
     const cmd = args[0]?.toLowerCase()
 
-    const keywords = ['add', 'remove', 'edit', 'list', 'help', 'addimg', 'delimg', 'send', 'reset', '大全']
+    const keywords = [
+      'add',
+      'remove',
+      'edit',
+      'list',
+      'help',
+      'addimg',
+      'delimg',
+      'send',
+      'reset',
+      '大全'
+    ]
 
     if (keywords.includes(cmd)) {
       await messageCtrl.editCommand(message, cmd)

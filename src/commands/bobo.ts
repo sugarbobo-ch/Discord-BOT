@@ -57,7 +57,6 @@ const isVideoUrl = (urlStr: string): boolean => {
   }
 }
 
-
 export class BoboCommand implements Command {
   public names = ['bobo']
 
@@ -80,7 +79,7 @@ export class BoboCommand implements Command {
       // 在等待 AI 回應時顯示「正在輸入...」狀態
       await (message.channel as any).sendTyping()
       typingInterval = setInterval(() => {
-        (message.channel as any).sendTyping().catch((err: any) => {
+        ;(message.channel as any).sendTyping().catch((err: any) => {
           console.error('Failed to send typing indicator:', err.message)
         })
       }, 5000)
@@ -91,7 +90,10 @@ export class BoboCommand implements Command {
 
       if (message.channel && message.channel.isTextBased()) {
         try {
-          const fetched = await (message.channel as any).messages.fetch({ limit, before: message.id })
+          const fetched = await (message.channel as any).messages.fetch({
+            limit,
+            before: message.id
+          })
           const msgArray = Array.from(fetched.values()) as Message[] // [最新, ..., 最舊]
           const k = msgArray.length
           if (k > 0) {
@@ -106,7 +108,9 @@ export class BoboCommand implements Command {
               if (imagesToDownload.length >= MAX_HISTORY_IMAGES) break
 
               // 檢查附件
-              const imageAttachments = msg.attachments.filter(att => att.contentType?.startsWith('image/'))
+              const imageAttachments = msg.attachments.filter(att =>
+                att.contentType?.startsWith('image/')
+              )
               if (imageAttachments.size > 0) {
                 const firstAtt = imageAttachments.first()
                 if (firstAtt && !isDiscordUrlExpired(firstAtt.url)) {
@@ -130,19 +134,30 @@ export class BoboCommand implements Command {
               }
             }
 
-            // 依序 [舊 -> 新] 下載以與 parts 編號對應
-            const downloadedHistoryImagesMap = new Map<string, { buffer: Buffer; mimeType: string; labelIndex: number; url: string }>()
+            // 依序 [新 -> 舊] 下載以與 parts 編號對應 (與 historyMsgs [最新 -> 最舊] 排序保持一致)
+            const downloadedHistoryImagesMap = new Map<
+              string,
+              { buffer: Buffer; mimeType: string; labelIndex: number; url: string }
+            >()
             let labelIdx = 1
 
-            for (const item of imagesToDownload.reverse()) {
+            for (const item of imagesToDownload) {
               try {
-                const response = await axios.get(item.url, { responseType: 'arraybuffer', timeout: 5000 })
+                const response = await axios.get(item.url, {
+                  responseType: 'arraybuffer',
+                  timeout: 5000
+                })
                 const contentType = response.headers['content-type']
                 const contentTypeStr = typeof contentType === 'string' ? contentType : undefined
                 const ext = item.url.split('.').pop()?.toLowerCase()
-                const mimeType = (contentTypeStr && contentTypeStr.startsWith('image/'))
-                  ? contentTypeStr
-                  : ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg'
+                const mimeType =
+                  contentTypeStr && contentTypeStr.startsWith('image/')
+                    ? contentTypeStr
+                    : ext === 'png'
+                      ? 'image/png'
+                      : ext === 'gif'
+                        ? 'image/gif'
+                        : 'image/jpeg'
 
                 const imgObj = {
                   buffer: Buffer.from(response.data),
@@ -156,79 +171,93 @@ export class BoboCommand implements Command {
                 const status = downloadError.response?.status
                 if (status === 404 || status === 403) {
                   // Discord CDN 連結失效或已被刪除，此為預期現象，使用 info 記錄以保持 log 清潔
-                  console.info(`History image from ${item.url} is no longer accessible (HTTP ${status}).`)
+                  console.info(
+                    `History image from ${item.url} is no longer accessible (HTTP ${status}).`
+                  )
                 } else {
-                  console.warn(`Failed to download history image from ${item.url}:`, downloadError.message)
+                  console.warn(
+                    `Failed to download history image from ${item.url}:`,
+                    downloadError.message
+                  )
                 }
               }
             }
 
-            // 3. 組合歷史文字 context
-            channelHistoryContext = historyMsgs
-              .map((msg: Message, i) => {
-                const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
-                const secondsAgo = nowSeconds - msgTimeSeconds
-                
-                // 計算權重：最新一筆 (i = 0) 為 1.00，其餘依位置與時間衰減 (離當前時間越遠，分數調得越低)
-                let calculatedWeight = Math.pow((k - i) / k, 2)
-                if (i === 0) {
-                  calculatedWeight = 1.0
-                } else {
-                  // 對於較舊的訊息，再額外乘以時間衰減係數（越久遠衰減越多，30 分鐘衰減常數，最低保留 0.1 避免完全歸零）
-                  const timeDecay = Math.max(0.1, Math.exp(-secondsAgo / 1800))
-                  calculatedWeight = calculatedWeight * timeDecay
+            // 3. 組合歷史文字 context (包含當前訊息作為最上方最新的一筆，權重為 1.00)
+            const currentSender = message.member?.displayName || message.author.username
+            let currentProcessedContent = prompt
+            if (hasAttachment && attachment) {
+              currentProcessedContent = `[當前圖片 (由 ${currentSender} 上傳，URL: ${attachment.url})] ${currentProcessedContent}`.trim()
+            }
+            const currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00] 內容: "${currentProcessedContent}"`
+
+            const historyEntries = historyMsgs.map((msg: Message, i) => {
+              const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
+              const secondsAgo = nowSeconds - msgTimeSeconds
+
+              // 計算權重：歷史訊息不再強制為 1.00，最大上限為 0.90，其餘依位置與時間衰減
+              let calculatedWeight = Math.pow((k - i) / k, 2)
+              const timeDecay = Math.max(0.1, Math.exp(-secondsAgo / 1800))
+              calculatedWeight = calculatedWeight * timeDecay
+              const weight = Math.min(0.90, Math.max(0.01, calculatedWeight)).toFixed(2)
+
+              const authorName = msg.member?.displayName || msg.author.username
+              const sender = msg.author.id === message.client.user?.id ? '波波' : authorName
+
+              let processedContent = msg.content
+
+              // 優先使用已下載的標記
+              const downloadedImg = downloadedHistoryImagesMap.get(msg.id)
+              if (downloadedImg) {
+                processedContent =
+                  `[歷史圖片 ${downloadedImg.labelIndex} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
+              }
+
+              // 處理所有附件 (圖片與影片)
+              const mediaAttachmentsInfo: string[] = []
+              msg.attachments.forEach(att => {
+                const isImage = att.contentType?.startsWith('image/')
+                const isVideo = att.contentType?.startsWith('video/')
+                if (isImage) {
+                  if (downloadedImg && downloadedImg.url === att.url) {
+                    return // 已被 downloadedImg 包含，不重複處理
+                  }
+                  mediaAttachmentsInfo.push(`[圖片附件 (由 ${sender} 上傳): ${att.url}]`)
+                } else if (isVideo) {
+                  mediaAttachmentsInfo.push(`[影片附件 (由 ${sender} 上傳): ${att.url}]`)
                 }
-                const weight = Math.max(0.01, calculatedWeight).toFixed(2)
+              })
 
-                const authorName = msg.member?.displayName || msg.author.username
-                const sender = msg.author.id === message.client.user?.id ? '波波' : authorName
-
-                let processedContent = msg.content
-
-                // 優先使用已下載的標記
-                const downloadedImg = downloadedHistoryImagesMap.get(msg.id)
-                if (downloadedImg) {
-                  processedContent = `[歷史圖片 ${downloadedImg.labelIndex} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
-                }
-
-                // 處理所有附件 (圖片與影片)
-                const mediaAttachmentsInfo: string[] = []
-                msg.attachments.forEach(att => {
-                  const isImage = att.contentType?.startsWith('image/')
-                  const isVideo = att.contentType?.startsWith('video/')
-                  if (isImage) {
-                    if (downloadedImg && downloadedImg.url === att.url) {
+              // 處理內文中的 URL
+              const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
+              if (urlMatch) {
+                urlMatch.forEach(url => {
+                  if (isImageUrl(url)) {
+                    if (downloadedImg && downloadedImg.url === url) {
                       return // 已被 downloadedImg 包含，不重複處理
                     }
-                    mediaAttachmentsInfo.push(`[圖片附件 (由 ${sender} 上傳): ${att.url}]`)
-                  } else if (isVideo) {
-                    mediaAttachmentsInfo.push(`[影片附件 (由 ${sender} 上傳): ${att.url}]`)
+                    processedContent = processedContent.replace(
+                      url,
+                      `[圖片連結 (由 ${sender} 分享): ${url}]`
+                    )
+                  } else if (isVideoUrl(url)) {
+                    processedContent = processedContent.replace(
+                      url,
+                      `[影片連結 (由 ${sender} 分享): ${url}]`
+                    )
                   }
                 })
+              }
 
-                // 處理內文中的 URL
-                const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
-                if (urlMatch) {
-                  urlMatch.forEach(url => {
-                    if (isImageUrl(url)) {
-                      if (downloadedImg && downloadedImg.url === url) {
-                        return // 已被 downloadedImg 包含，不重複處理
-                      }
-                      processedContent = processedContent.replace(url, `[圖片連結 (由 ${sender} 分享): ${url}]`)
-                    } else if (isVideoUrl(url)) {
-                      processedContent = processedContent.replace(url, `[影片連結 (由 ${sender} 分享): ${url}]`)
-                    }
-                  })
-                }
+              // 若有其他媒體附件，附加在內文後面
+              if (mediaAttachmentsInfo.length > 0) {
+                processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
+              }
 
-                // 若有其他媒體附件，附加在內文後面
-                if (mediaAttachmentsInfo.length > 0) {
-                  processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
-                }
+              return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}] 內容: "${processedContent}"`
+            })
 
-                return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}] 內容: "${processedContent}"`
-              })
-              .join('\n')
+            channelHistoryContext = [currentEntry, ...historyEntries].join('\n')
           }
         } catch (fetchError: any) {
           console.warn('Failed to fetch channel history:', fetchError.message)
@@ -240,7 +269,10 @@ export class BoboCommand implements Command {
 
       if (attachment && attachment.contentType?.startsWith('image/')) {
         try {
-          const response = await axios.get(attachment.url, { responseType: 'arraybuffer', timeout: 10000 })
+          const response = await axios.get(attachment.url, {
+            responseType: 'arraybuffer',
+            timeout: 10000
+          })
           image = {
             buffer: Buffer.from(response.data),
             mimeType: attachment.contentType
@@ -261,9 +293,14 @@ export class BoboCommand implements Command {
               const contentType = response.headers['content-type']
               const contentTypeStr = typeof contentType === 'string' ? contentType : undefined
               const ext = url.split('.').pop()?.toLowerCase()
-              const mimeType = (contentTypeStr && contentTypeStr.startsWith('image/'))
-                ? contentTypeStr
-                : ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg'
+              const mimeType =
+                contentTypeStr && contentTypeStr.startsWith('image/')
+                  ? contentTypeStr
+                  : ext === 'png'
+                    ? 'image/png'
+                    : ext === 'gif'
+                      ? 'image/gif'
+                      : 'image/jpeg'
               image = {
                 buffer: Buffer.from(response.data),
                 mimeType
@@ -284,7 +321,7 @@ export class BoboCommand implements Command {
         channelHistoryContext,
         image,
         historyImagesPayload,
-        async (statusText) => {
+        async statusText => {
           try {
             if (!statusMessage) {
               statusMessage = await message.reply(statusText)
@@ -297,7 +334,7 @@ export class BoboCommand implements Command {
         },
         currentAuthorName
       )
-      
+
       // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
       if (reply.length <= 2000) {
         if (statusMessage) {

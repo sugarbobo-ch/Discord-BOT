@@ -27,7 +27,10 @@ export const checkAndFixTwitterEmbed = (message: Message, delayMs: number = 3000
 
       // 如果沒有 embeds，則進行 x.com -> fixvx.com 的替換並發送
       if (!fetchedMsg.embeds || fetchedMsg.embeds.length === 0) {
-        const fixedContent = fetchedMsg.content.replace(/(https?:\/\/)(www\.)?x\.com/ig, '$1fixvx.com')
+        const fixedContent = fetchedMsg.content.replace(
+          /(https?:\/\/)(www\.)?x\.com/gi,
+          '$1fixvx.com'
+        )
         if (fixedContent !== fetchedMsg.content) {
           await (message.channel as any).send(fixedContent)
         }

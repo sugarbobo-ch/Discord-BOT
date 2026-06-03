@@ -45,7 +45,7 @@ export const sendRepeatedMessage = (message: Message): void => {
       }
       return
     }
-    (message.channel as any).send(text)
+    ;(message.channel as any).send(text)
     serverMessagesDict[serverId][channelId] = messageQueue.filter(v => v.text !== text)
   }
 }

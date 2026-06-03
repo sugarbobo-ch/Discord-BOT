@@ -96,8 +96,9 @@ export const editCommand = async (message: Message, command?: string): Promise<v
         }
       }
       responseDict[server][command] = content.replace(/^([^ ]+ ){2}/, '')
-      db.prepare('INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)')
-        .run(server, command, responseDict[server][command])
+      db.prepare(
+        'INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)'
+      ).run(server, command, responseDict[server][command])
 
       if (action === 'add') {
         message.reply(`${command} 指令已經新增到列表中，內容： ${responseDict[server][command]}`)
@@ -190,9 +191,9 @@ export const checkCommand = (message: Message, command?: string): void => {
         plainText = plainText.replace(regex, commandLineArray[0])
         plainText = plainText.replace(regex2, commandLineArray[0])
       }
-      (message.channel as any).send(`${plainText}`)
+      ;(message.channel as any).send(`${plainText}`)
     } else {
-      (message.channel as any).send(responseDict[server][command])
+      ;(message.channel as any).send(responseDict[server][command])
     }
   }
 }
@@ -259,20 +260,25 @@ export const addImageCommand = async (message: Message): Promise<void> => {
     })
 
     // 檢查頻道是否不是 NSFW 頻道
-    const isNsfwChannel = message.channel.isTextBased() && 'nsfw' in message.channel && (message.channel as any).nsfw
+    const isNsfwChannel =
+      message.channel.isTextBased() && 'nsfw' in message.channel && (message.channel as any).nsfw
 
     if (!isNsfwChannel) {
       const buffer = await fs.promises.readFile(fileDest)
       const mimeType = imageUrl.toLowerCase().endsWith('.png')
         ? 'image/png'
         : imageUrl.toLowerCase().endsWith('.gif')
-        ? 'image/gif'
-        : 'image/jpeg'
+          ? 'image/gif'
+          : 'image/jpeg'
 
       const nsfwResult = await checkImageNSFW(buffer, mimeType)
       if (nsfwResult.nsfw) {
         // 刪除剛下載的檔案並自 index 清除
-        await fileManager.removeFile('assets/images/' + folderName, path.basename(fileDest), folderName)
+        await fileManager.removeFile(
+          'assets/images/' + folderName,
+          path.basename(fileDest),
+          folderName
+        )
         message.reply(`⛔ 圖片檢測為 NSFW 內容，已被拒絕！原因：${nsfwResult.reason}`)
         return
       }
@@ -355,7 +361,7 @@ export const sendChannelMessage = (message: Message): void => {
 
   const channel = client.channels.cache.get(commands[1])
   if (channel && channel.isTextBased()) {
-    (channel as TextChannel).send(content.replace(/^([^ ]+ ){2}/, ''))
+    ;(channel as TextChannel).send(content.replace(/^([^ ]+ ){2}/, ''))
   }
 }
 
@@ -397,7 +403,7 @@ export const searchAllCommands = (message: Message): void => {
       totalCommandsCount += 1
       const tempStr = str + key
       if (tempStr.length > 1950) {
-        (message.channel as any).send(tempStr)
+        ;(message.channel as any).send(tempStr)
         str = ''
         continue
       }
@@ -415,8 +421,8 @@ export const searchAllCommands = (message: Message): void => {
     } else {
       str += `\n\n共 ${totalCommandsCount} 個指令\n`
     }
-    (message.channel as any).send(str)
+    ;(message.channel as any).send(str)
   } else {
-    (message.channel as any).send('查無結果')
+    ;(message.channel as any).send('查無結果')
   }
 }

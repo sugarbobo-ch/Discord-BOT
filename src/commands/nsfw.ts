@@ -26,29 +26,29 @@ export class NsfwCommand implements Command {
 
   private getPixivURL(message: Message, args: string[]): void {
     if (args.length === 1) {
-      (message.channel as any).send(`https://www.pixiv.net/artworks/${args[0]}`)
+      ;(message.channel as any).send(`https://www.pixiv.net/artworks/${args[0]}`)
     }
   }
 
   private getSourceURL(message: Message, args: string[]): void {
     if (args.length === 1) {
-      (message.channel as any).send(`https://saucenao.com/search.php?db=999&url=${args[0]}`)
+      ;(message.channel as any).send(`https://saucenao.com/search.php?db=999&url=${args[0]}`)
     }
   }
 
   private getHentaiURL(message: Message, args: string[]): void {
     if (args.length === 1) {
-      (message.channel as any).send(`https://nhentai.net/g/${args[0]}`)
+      ;(message.channel as any).send(`https://nhentai.net/g/${args[0]}`)
     }
   }
 
   private getWnacgURL(message: Message, args: string[]): void {
     if (args.length === 1) {
       if (message.channel.isTextBased() && 'nsfw' in message.channel && !message.channel.nsfw) {
-        (message.channel as any).send('請至開車頻道使用此指令')
+        ;(message.channel as any).send('請至開車頻道使用此指令')
         return
       }
-      (message.channel as any).send(`https://www.wnacg.com/photos-index-aid-${args[0]}.html`)
+      ;(message.channel as any).send(`https://www.wnacg.com/photos-index-aid-${args[0]}.html`)
     }
   }
 }

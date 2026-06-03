@@ -3,8 +3,7 @@ import { Message } from 'discord.js'
 export const checkPrefix = (message: Message): boolean => {
   const firstChar = message.content.charAt(0)
   return (
-    (firstChar === '!' || firstChar === '！' || firstChar === '/') &&
-    message.content.length !== 1
+    (firstChar === '!' || firstChar === '！' || firstChar === '/') && message.content.length !== 1
   )
 }
 

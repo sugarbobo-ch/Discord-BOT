@@ -47,7 +47,9 @@ export function getDb(): any {
 export function getTwitterSetting(serverId: string): boolean {
   const db = getDb()
   try {
-    const row = db.prepare('SELECT detect_twitter FROM settings WHERE server_id = ?').get(serverId) as { detect_twitter: number } | undefined
+    const row = db
+      .prepare('SELECT detect_twitter FROM settings WHERE server_id = ?')
+      .get(serverId) as { detect_twitter: number } | undefined
     return row ? row.detect_twitter === 1 : true
   } catch (error) {
     console.error('Error fetching twitter setting:', error)
@@ -64,10 +66,11 @@ export function setTwitterSetting(serverId: string, enable: boolean): void {
     // 確保伺服器已記錄在 servers 表中
     db.prepare('INSERT OR IGNORE INTO servers (server_id) VALUES (?)').run(serverId)
     // 寫入/更新設定
-    db.prepare('INSERT OR REPLACE INTO settings (server_id, detect_twitter) VALUES (?, ?)')
-      .run(serverId, enable ? 1 : 0)
+    db.prepare('INSERT OR REPLACE INTO settings (server_id, detect_twitter) VALUES (?, ?)').run(
+      serverId,
+      enable ? 1 : 0
+    )
   } catch (error) {
     console.error('Error setting twitter setting:', error)
   }
 }
-
