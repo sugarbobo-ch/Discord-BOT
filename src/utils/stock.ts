@@ -888,3 +888,92 @@ export function getStockSlogan(name: string): string | null {
   return null
 }
 
+/**
+ * 獲取股票歷史 K 線圖所需的數據
+ */
+export async function getStockChartData(ticker: string, days = 40): Promise<any[]> {
+  const now = new Date();
+  const startDate = new Date();
+  startDate.setDate(now.getDate() - days);
+  const startDateStr = startDate.toISOString().split('T')[0];
+
+  let actualTicker = ticker.trim().toUpperCase()
+  if (COMMON_STOCK_MAP[actualTicker]) {
+    actualTicker = COMMON_STOCK_MAP[actualTicker]
+  }
+
+  const twStockRegex = /^\d{4,6}[A-Z]?$/
+  if (twStockRegex.test(actualTicker)) {
+    await initTaiwanStockMap()
+    const resolvedTwTicker = getTaiwanStockTicker(actualTicker)
+    if (resolvedTwTicker) {
+      actualTicker = resolvedTwTicker
+    }
+  }
+
+  const isTaiwanStock = actualTicker.endsWith('.TW') || actualTicker.endsWith('.TWO')
+
+  try {
+    let result: any = null
+    if (!isTaiwanStock && twStockRegex.test(actualTicker)) {
+      try {
+        result = await yahooFinance.chart(`${actualTicker}.TW`, { period1: startDateStr, interval: '1d' })
+      } catch {
+        try {
+          result = await yahooFinance.chart(`${actualTicker}.TWO`, { period1: startDateStr, interval: '1d' })
+        } catch {
+          result = await yahooFinance.chart(`${actualTicker}.TW`, { period1: startDateStr, interval: '1d' })
+        }
+      }
+    } else {
+      result = await yahooFinance.chart(actualTicker, { period1: startDateStr, interval: '1d' })
+    }
+    return result?.quotes || [];
+  } catch (error: any) {
+    console.error(`[getStockChartData Error] Failed to fetch chart for ${actualTicker}:`, error.message);
+    return [];
+  }
+}
+
+/**
+ * 從 Yahoo Finance 獲取完整的 quote 資訊 (例如 52 週最低/最高)
+ */
+export async function fetchFullYahooQuote(ticker: string): Promise<any> {
+  let actualTicker = ticker.trim().toUpperCase()
+  if (COMMON_STOCK_MAP[actualTicker]) {
+    actualTicker = COMMON_STOCK_MAP[actualTicker]
+  }
+
+  const twStockRegex = /^\d{4,6}[A-Z]?$/
+  if (twStockRegex.test(actualTicker)) {
+    await initTaiwanStockMap()
+    const resolvedTwTicker = getTaiwanStockTicker(actualTicker)
+    if (resolvedTwTicker) {
+      actualTicker = resolvedTwTicker
+    }
+  }
+
+  const isTaiwanStock = actualTicker.endsWith('.TW') || actualTicker.endsWith('.TWO')
+
+  try {
+    let quote: any = null
+    if (!isTaiwanStock && twStockRegex.test(actualTicker)) {
+      try {
+        quote = await yahooFinance.quote(`${actualTicker}.TW`)
+      } catch {
+        try {
+          quote = await yahooFinance.quote(`${actualTicker}.TWO`)
+        } catch {
+          quote = await yahooFinance.quote(`${actualTicker}.TW`)
+        }
+      }
+    } else {
+      quote = await yahooFinance.quote(actualTicker)
+    }
+    return quote;
+  } catch (error: any) {
+    console.error(`[fetchFullYahooQuote Error] Failed for ${actualTicker}:`, error.message);
+    return null;
+  }
+}
+

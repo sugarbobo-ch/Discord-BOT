@@ -1,4 +1,4 @@
-import { Message } from 'discord.js'
+import { Message, MessageType } from 'discord.js'
 import { Command } from './command.interface'
 import { chatWithBobo } from '../utils/gemini'
 import auth from '../../config/auth.json'
@@ -58,9 +58,28 @@ const isVideoUrl = (urlStr: string): boolean => {
 }
 
 /**
- * 獲取訊息中的圖片網址 (優先使用附件，其次使用內文連結)
+ * 判斷是否為系統訊息（身分組通知、伺服器加成等），這類訊息不應被讀取圖片
+ */
+const isSystemMessage = (msg: Message): boolean => {
+  // MessageType.Default = 0, MessageType.Reply = 19
+  // 只有一般訊息和回覆訊息才應處理，其餘皆為系統訊息（如身分組購買、加成通知等）
+  return msg.type !== MessageType.Default && msg.type !== MessageType.Reply
+}
+
+/**
+ * 判斷是否為 Discord 身分組圖示 CDN 連結（role-icons）
+ * 格式: https://cdn.discordapp.com/role-icons/{role_id}/{icon_hash}.webp
+ */
+const isRoleIconUrl = (urlStr: string): boolean => {
+  return urlStr.includes('/role-icons/')
+}
+
+/**
+ * 獲取訊息中的圖片網址 (優先使用附件，其次使用 Embed 圖片，最後使用內文連結)
+ * 注意：此函數不處理系統訊息的過濾，呼叫端應先以 isSystemMessage 判斷
  */
 const getMessageImageUrl = (msg: Message): string | null => {
+  // 1. 優先使用直接上傳的圖片附件
   const imageAttachments = msg.attachments.filter(att =>
     att.contentType?.startsWith('image/')
   )
@@ -71,6 +90,18 @@ const getMessageImageUrl = (msg: Message): string | null => {
     }
   }
 
+  // 2. 從 Embed 中提取圖片（例如連結預覽圖、K線圖等，過濾掉身分組圖示）
+  if (msg.embeds && msg.embeds.length > 0) {
+    for (const embed of msg.embeds) {
+      // 優先取 embed.image，其次取 embed.thumbnail
+      const embedImageUrl = embed.image?.url || embed.thumbnail?.url
+      if (embedImageUrl && !isDiscordUrlExpired(embedImageUrl) && !isRoleIconUrl(embedImageUrl)) {
+        return embedImageUrl
+      }
+    }
+  }
+
+  // 3. 從內文中尋找圖片連結
   const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
   if (urlMatch) {
     for (const url of urlMatch) {
@@ -244,6 +275,9 @@ export class BoboCommand implements Command {
             for (const msg of historyMsgs) {
               if (imagesToDownload.length >= MAX_HISTORY_IMAGES) break
 
+              // 跳過系統訊息（身分組通知、伺服器加成等），避免讀取無關圖片
+              if (isSystemMessage(msg)) continue
+
               // 避免重複加入回覆訊息的圖片 (不管是當作主圖還是已經當作歷史圖加入)
               if (repliedMsg && msg.id === repliedMsg.id && repliedMsgImageUrl) {
                 continue
@@ -322,7 +356,9 @@ export class BoboCommand implements Command {
               currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00] 內容: "${currentProcessedContent}"`
             }
 
-            const historyEntries = historyMsgs.map((msg: Message, i) => {
+            const historyEntries = historyMsgs
+              .filter((msg: Message) => !isSystemMessage(msg)) // 過濾掉系統訊息（身分組通知等）
+              .map((msg: Message, i) => {
               const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
               const secondsAgo = nowSeconds - msgTimeSeconds
 
@@ -367,6 +403,19 @@ export class BoboCommand implements Command {
                   mediaAttachmentsInfo.push(`[影片附件 (由 ${sender} 上傳): ${att.url}]`)
                 }
               })
+
+              // 處理 Embed 圖片（連結預覽圖、K線圖等）
+              if (msg.embeds && msg.embeds.length > 0) {
+                for (const embed of msg.embeds) {
+                  const embedImageUrl = embed.image?.url || embed.thumbnail?.url
+                  if (embedImageUrl && !isRoleIconUrl(embedImageUrl)) {
+                    if (downloadedImg && downloadedImg.url === embedImageUrl) {
+                      continue // 已被 downloadedImg 包含，不重複處理
+                    }
+                    mediaAttachmentsInfo.push(`[Embed 圖片 (由 ${sender} 分享): ${embedImageUrl}]`)
+                  }
+                }
+              }
 
               // 處理內文中的 URL
               const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
