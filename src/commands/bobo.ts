@@ -57,6 +57,31 @@ const isVideoUrl = (urlStr: string): boolean => {
   }
 }
 
+/**
+ * 獲取訊息中的圖片網址 (優先使用附件，其次使用內文連結)
+ */
+const getMessageImageUrl = (msg: Message): string | null => {
+  const imageAttachments = msg.attachments.filter(att =>
+    att.contentType?.startsWith('image/')
+  )
+  if (imageAttachments.size > 0) {
+    const firstAtt = imageAttachments.first()
+    if (firstAtt && !isDiscordUrlExpired(firstAtt.url)) {
+      return firstAtt.url
+    }
+  }
+
+  const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
+  if (urlMatch) {
+    for (const url of urlMatch) {
+      if (isImageUrl(url) && !isDiscordUrlExpired(url)) {
+        return url
+      }
+    }
+  }
+  return null
+}
+
 export class BoboCommand implements Command {
   public names = ['bobo']
 
@@ -65,9 +90,30 @@ export class BoboCommand implements Command {
     const attachment = message.attachments.first()
     const hasAttachment = attachment && attachment.contentType?.startsWith('image/')
 
+    // 1. 獲取被回覆的訊息
+    let repliedMsg: Message | null = null
+    if (message.reference && message.reference.messageId) {
+      try {
+        repliedMsg = await message.channel.messages.fetch(message.reference.messageId)
+      } catch (fetchRefError: any) {
+        console.warn('Failed to fetch referenced message:', fetchRefError.message)
+      }
+    }
+
+    const repliedMsgImageUrl = repliedMsg ? getMessageImageUrl(repliedMsg) : null
+
+    // 2. 處理當前 Prompt 與回覆訊息的關聯
     if (!prompt && !hasAttachment) {
-      message.reply('叫波波幹嘛？後面要加上你想說的話或提供圖片啦！')
-      return
+      if (repliedMsg) {
+        if (repliedMsgImageUrl) {
+          prompt = '這張圖片是什麼？請跟我聊聊。'
+        } else {
+          prompt = '請回覆此訊息。'
+        }
+      } else {
+        message.reply('叫波波幹嘛？後面要加上你想說的話或提供圖片啦！')
+        return
+      }
     }
 
     if (!prompt && hasAttachment) {
@@ -84,6 +130,83 @@ export class BoboCommand implements Command {
         })
       }, 5000)
 
+      // 3. 嘗試下載當前訊息的主圖片內容
+      let image: { buffer: Buffer; mimeType: string } | undefined
+      let isImageFromRepliedMsg = false
+
+      if (attachment && attachment.contentType?.startsWith('image/')) {
+        try {
+          const response = await axios.get(attachment.url, {
+            responseType: 'arraybuffer',
+            timeout: 10000
+          })
+          image = {
+            buffer: Buffer.from(response.data),
+            mimeType: attachment.contentType
+          }
+        } catch (downloadError: any) {
+          console.warn('Failed to download attachment:', downloadError.message)
+        }
+      }
+
+      // 若無附件，偵測文字中是否含有圖片網址
+      if (!image && prompt) {
+        const urlMatch = prompt.match(/https?:\/\/\S+/i)
+        if (urlMatch) {
+          const url = urlMatch[0]
+          if (isImageUrl(url)) {
+            try {
+              const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 })
+              const contentType = response.headers['content-type']
+              const contentTypeStr = typeof contentType === 'string' ? contentType : undefined
+              const ext = url.split('.').pop()?.toLowerCase()
+              const mimeType =
+                contentTypeStr && contentTypeStr.startsWith('image/')
+                  ? contentTypeStr
+                  : ext === 'png'
+                    ? 'image/png'
+                    : ext === 'gif'
+                      ? 'image/gif'
+                      : 'image/jpeg'
+              image = {
+                buffer: Buffer.from(response.data),
+                mimeType
+              }
+            } catch (urlError: any) {
+              console.warn('Failed to download image from URL:', urlError.message)
+            }
+          }
+        }
+      }
+
+      // 若當前訊息皆無圖片，且回覆訊息有圖片，將回覆訊息的圖片下載並作為主圖
+      if (!image && repliedMsgImageUrl) {
+        try {
+          const response = await axios.get(repliedMsgImageUrl, {
+            responseType: 'arraybuffer',
+            timeout: 10000
+          })
+          const contentType = response.headers['content-type']
+          const contentTypeStr = typeof contentType === 'string' ? contentType : undefined
+          const ext = repliedMsgImageUrl.split('.').pop()?.toLowerCase()
+          const mimeType =
+            contentTypeStr && contentTypeStr.startsWith('image/')
+              ? contentTypeStr
+              : ext === 'png'
+                ? 'image/png'
+                : ext === 'gif'
+                  ? 'image/gif'
+                  : 'image/jpeg'
+          image = {
+            buffer: Buffer.from(response.data),
+            mimeType
+          }
+          isImageFromRepliedMsg = true
+        } catch (downloadError: any) {
+          console.warn('Failed to download replied message image:', downloadError.message)
+        }
+      }
+
       const limit = (auth as any).chatMemoryLimit || 50
       let channelHistoryContext = ''
       const historyImagesPayload: { buffer: Buffer; mimeType: string }[] = []
@@ -95,42 +218,40 @@ export class BoboCommand implements Command {
             before: message.id
           })
           const msgArray = Array.from(fetched.values()) as Message[] // [最新, ..., 最舊]
-          const k = msgArray.length
+          const historyMsgs = [...msgArray]
+
+          // 4. 確保回覆的訊息存在於 historyMsgs 之中 (若它比歷史前 50 筆更舊，就將其 append 於最後)
+          if (repliedMsg) {
+            const hasRepliedInHistory = historyMsgs.some(m => m.id === repliedMsg!.id)
+            if (!hasRepliedInHistory) {
+              historyMsgs.push(repliedMsg)
+            }
+          }
+
+          const k = historyMsgs.length
           if (k > 0) {
             const nowSeconds = Math.floor(Date.now() / 1000)
-            const historyMsgs = msgArray // [最新, ..., 最舊]
 
             // 1. 先從最新往舊尋找最多 3 張圖片，將其下載
             const MAX_HISTORY_IMAGES = 3
             const imagesToDownload: { msgId: string; url: string }[] = []
 
+            // 如果有回覆的圖片，且沒有被用作主圖片 (isImageFromRepliedMsg 為 false)，則優先強行放入歷史下載清單
+            if (repliedMsg && repliedMsgImageUrl && !isImageFromRepliedMsg) {
+              imagesToDownload.push({ msgId: repliedMsg.id, url: repliedMsgImageUrl })
+            }
+
             for (const msg of historyMsgs) {
               if (imagesToDownload.length >= MAX_HISTORY_IMAGES) break
 
-              // 檢查附件
-              const imageAttachments = msg.attachments.filter(att =>
-                att.contentType?.startsWith('image/')
-              )
-              if (imageAttachments.size > 0) {
-                const firstAtt = imageAttachments.first()
-                if (firstAtt && !isDiscordUrlExpired(firstAtt.url)) {
-                  imagesToDownload.push({ msgId: msg.id, url: firstAtt.url })
-                  continue
-                }
+              // 避免重複加入回覆訊息的圖片 (不管是當作主圖還是已經當作歷史圖加入)
+              if (repliedMsg && msg.id === repliedMsg.id && repliedMsgImageUrl) {
+                continue
               }
 
-              // 檢查內文 URL
-              const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
-              if (urlMatch) {
-                let found = false
-                for (const url of urlMatch) {
-                  if (isImageUrl(url) && !isDiscordUrlExpired(url)) {
-                    imagesToDownload.push({ msgId: msg.id, url })
-                    found = true
-                    break
-                  }
-                }
-                if (found) continue
+              const imgUrl = getMessageImageUrl(msg)
+              if (imgUrl) {
+                imagesToDownload.push({ msgId: msg.id, url: imgUrl })
               }
             }
 
@@ -188,18 +309,34 @@ export class BoboCommand implements Command {
             let currentProcessedContent = prompt
             if (hasAttachment && attachment) {
               currentProcessedContent = `[當前圖片 (由 ${currentSender} 上傳，URL: ${attachment.url})] ${currentProcessedContent}`.trim()
+            } else if (repliedMsg && repliedMsgImageUrl && image && isImageFromRepliedMsg) {
+              const repliedSender = repliedMsg.member?.displayName || repliedMsg.author.username
+              currentProcessedContent = `[回覆的圖片 (由 ${repliedSender} 上傳，URL: ${repliedMsgImageUrl})] ${currentProcessedContent}`.trim()
             }
-            const currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00] 內容: "${currentProcessedContent}"`
+
+            let currentEntry = ''
+            if (repliedMsg) {
+              const repliedSender = repliedMsg.member?.displayName || repliedMsg.author.username
+              currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00, 回覆給: ${repliedSender}] 內容: "${currentProcessedContent}"`
+            } else {
+              currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00] 內容: "${currentProcessedContent}"`
+            }
 
             const historyEntries = historyMsgs.map((msg: Message, i) => {
               const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
               const secondsAgo = nowSeconds - msgTimeSeconds
 
-              // 計算權重：歷史訊息不再強制為 1.00，最大上限為 0.90，其餘依位置與時間衰減
-              let calculatedWeight = Math.pow((k - i) / k, 2)
-              const timeDecay = Math.max(0.1, Math.exp(-secondsAgo / 1800))
-              calculatedWeight = calculatedWeight * timeDecay
-              const weight = Math.min(0.90, Math.max(0.01, calculatedWeight)).toFixed(2)
+              // 計算權重：回覆訊息權重強行設為 1.00。其他歷史訊息則依位置與時間衰減，最大上限為 0.90
+              let weight = '0.90'
+              const isRepliedMessage = msg.id === repliedMsg?.id
+              if (isRepliedMessage) {
+                weight = '1.00'
+              } else {
+                let calculatedWeight = Math.pow((k - i) / k, 2)
+                const timeDecay = Math.max(0.1, Math.exp(-secondsAgo / 1800))
+                calculatedWeight = calculatedWeight * timeDecay
+                weight = Math.min(0.90, Math.max(0.01, calculatedWeight)).toFixed(2)
+              }
 
               const authorName = msg.member?.displayName || msg.author.username
               const sender = msg.author.id === message.client.user?.id ? '波波' : authorName
@@ -209,8 +346,11 @@ export class BoboCommand implements Command {
               // 優先使用已下載的標記
               const downloadedImg = downloadedHistoryImagesMap.get(msg.id)
               if (downloadedImg) {
+                const imgLabel = isRepliedMessage
+                  ? '回覆的圖片'
+                  : `歷史圖片 ${downloadedImg.labelIndex}`
                 processedContent =
-                  `[歷史圖片 ${downloadedImg.labelIndex} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
+                  `[${imgLabel} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
               }
 
               // 處理所有附件 (圖片與影片)
@@ -254,61 +394,14 @@ export class BoboCommand implements Command {
                 processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
               }
 
-              return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}] 內容: "${processedContent}"`
+              const replyTargetLabel = isRepliedMessage ? ', 此為回覆目標' : ''
+              return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}${replyTargetLabel}] 內容: "${processedContent}"`
             })
 
             channelHistoryContext = [currentEntry, ...historyEntries].join('\n')
           }
         } catch (fetchError: any) {
           console.warn('Failed to fetch channel history:', fetchError.message)
-        }
-      }
-
-      // 嘗試抓取圖片內容
-      let image: { buffer: Buffer; mimeType: string } | undefined
-
-      if (attachment && attachment.contentType?.startsWith('image/')) {
-        try {
-          const response = await axios.get(attachment.url, {
-            responseType: 'arraybuffer',
-            timeout: 10000
-          })
-          image = {
-            buffer: Buffer.from(response.data),
-            mimeType: attachment.contentType
-          }
-        } catch (downloadError: any) {
-          console.warn('Failed to download attachment:', downloadError.message)
-        }
-      }
-
-      // 若無附件，偵測文字中是否含有圖片網址
-      if (!image && prompt) {
-        const urlMatch = prompt.match(/https?:\/\/\S+/i)
-        if (urlMatch) {
-          const url = urlMatch[0]
-          if (isImageUrl(url)) {
-            try {
-              const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 })
-              const contentType = response.headers['content-type']
-              const contentTypeStr = typeof contentType === 'string' ? contentType : undefined
-              const ext = url.split('.').pop()?.toLowerCase()
-              const mimeType =
-                contentTypeStr && contentTypeStr.startsWith('image/')
-                  ? contentTypeStr
-                  : ext === 'png'
-                    ? 'image/png'
-                    : ext === 'gif'
-                      ? 'image/gif'
-                      : 'image/jpeg'
-              image = {
-                buffer: Buffer.from(response.data),
-                mimeType
-              }
-            } catch (urlError: any) {
-              console.warn('Failed to download image from URL:', urlError.message)
-            }
-          }
         }
       }
 

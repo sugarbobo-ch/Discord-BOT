@@ -96,8 +96,9 @@ client.on('messageCreate', async (message: Message) => {
 
   let result = messageCtrl.checkPrefix(message)
   if (!result) {
-    // 檢查是否直接 tag / mention 機器人
-    if (client.user && message.mentions.has(client.user)) {
+    // 檢查是否直接 tag / mention 機器人，或是回覆機器人的訊息 (即便回覆時關閉了 ping 依然觸發)
+    const isReplyToBot = message.reference && message.mentions.repliedUser?.id === client.user?.id
+    if (client.user && (message.mentions.has(client.user) || isReplyToBot)) {
       const boboCmd = commandRegistry.get('bobo')
       if (boboCmd) {
         const botMentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g')
@@ -106,7 +107,7 @@ client.on('messageCreate', async (message: Message) => {
         try {
           await boboCmd.execute(message, args)
         } catch (error) {
-          console.error('Error executing bobo command on mention:', error)
+          console.error('Error executing bobo command on mention/reply:', error)
         }
         return
       }
