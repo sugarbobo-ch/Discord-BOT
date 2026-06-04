@@ -255,6 +255,51 @@ describe('Gemini Utility Tests', () => {
     )
   })
 
+  test('chatWithBobo should send images in correct order and include description text parts when provided', async () => {
+    mockGenerateContent.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: '好的' }] } }]
+    })
+
+    const currentImage = {
+      buffer: Buffer.from('current_image_bytes'),
+      mimeType: 'image/jpeg',
+      description: '當前上傳的圖片'
+    }
+
+    const historyImages = [
+      {
+        buffer: Buffer.from('history_image_bytes_1'),
+        mimeType: 'image/png',
+        description: '歷史圖片 1'
+      }
+    ]
+
+    await chatWithBobo(
+      '這張圖是什麼？',
+      'user_test_desc',
+      undefined,
+      currentImage,
+      historyImages
+    )
+
+    // Verify mockGenerateContent was called with correct order of parts
+    const lastCall = mockGenerateContent.mock.calls[mockGenerateContent.mock.calls.length - 1][0]
+    const parts = lastCall.contents[0].parts
+
+    // Find indices of description texts and inlineData
+    const currentDescIdx = parts.findIndex((p: any) => p.text?.includes('【此圖片對應的訊息內容】\n當前上傳的圖片'))
+    const currentImgIdx = parts.findIndex((p: any) => p.inlineData?.mimeType === 'image/jpeg')
+    const historyDescIdx = parts.findIndex((p: any) => p.text?.includes('【此歷史圖片對應的訊息內容】\n歷史圖片 1'))
+    const historyImgIdx = parts.findIndex((p: any) => p.inlineData?.mimeType === 'image/png')
+    const promptIdx = parts.findIndex((p: any) => p.text === '這張圖是什麼？')
+
+    expect(currentDescIdx).toBeGreaterThan(-1)
+    expect(currentImgIdx).toBe(currentDescIdx + 1)
+    expect(historyDescIdx).toBeGreaterThan(currentImgIdx)
+    expect(historyImgIdx).toBe(historyDescIdx + 1)
+    expect(promptIdx).toBeGreaterThan(historyImgIdx)
+  })
+
   test('chatWithBobo should return friendly message when API returns 429', async () => {
     const errorResponse = {
       status: 429,

@@ -19,15 +19,20 @@ describe('BoboCommand Reply Tests', () => {
 
     vi.mocked(chatWithBobo).mockResolvedValue('這是波波的回答')
 
-    vi.mocked(axios.get).mockResolvedValue({
-      data: Buffer.from('mock_image_data'),
-      headers: {
-        'content-type': 'image/png'
-      }
-    } as any)
+    vi.mocked(axios.get).mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : ''
+      const mime = urlStr.includes('current.jpg') ? 'image/jpeg' : 'image/png'
+      return Promise.resolve({
+        data: Buffer.from('mock_image_data'),
+        headers: {
+          'content-type': mime
+        }
+      } as any)
+    })
 
     mockRepliedMsg = {
       id: 'replied_msg_id',
+      type: 0,
       content: '這是被回覆的原始訊息內容',
       attachments: {
         filter: vi.fn().mockReturnValue({
@@ -43,6 +48,7 @@ describe('BoboCommand Reply Tests', () => {
 
     mockMessage = {
       id: 'msg_id',
+      type: 0,
       content: '!bobo 你好',
       attachments: {
         first: vi.fn().mockReturnValue(null)
@@ -117,7 +123,7 @@ describe('BoboCommand Reply Tests', () => {
     expect(historyContextArg).toContain('[回覆的圖片 (由 小明 上傳，URL: https://example.com/attachments/123/456/image.png)]')
   })
 
-  test('should prioritize replied image in history images if current message also has an image', async () => {
+  test('should prioritize replied image as primary image if current message also has an image', async () => {
     // Current message has image
     const mockCurrentAttachment = {
       contentType: 'image/jpeg',
@@ -141,14 +147,14 @@ describe('BoboCommand Reply Tests', () => {
     expect(axios.get).toHaveBeenCalledWith('https://example.com/attachments/999/888/current.jpg', expect.any(Object))
     expect(axios.get).toHaveBeenCalledWith('https://example.com/attachments/123/456/replied.png', expect.any(Object))
 
-    // Primary image should be the current message image
+    // Primary image should be the replied message image
     const primaryImageArg = vi.mocked(chatWithBobo).mock.calls[0][3]
-    expect(primaryImageArg?.mimeType).toBe('image/jpeg')
+    expect(primaryImageArg?.mimeType).toBe('image/png')
 
-    // History images payload should contain the replied image (5th argument)
+    // History images payload should contain the current message image (5th argument)
     const historyImagesPayload = vi.mocked(chatWithBobo).mock.calls[0][4]
     expect(historyImagesPayload).toHaveLength(1)
-    expect(historyImagesPayload?.[0].mimeType).toBe('image/png')
+    expect(historyImagesPayload?.[0].mimeType).toBe('image/jpeg')
   })
 
   test('should set default prompt when prompt is empty for text-only replies', async () => {

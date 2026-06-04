@@ -65,8 +65,8 @@ export const chatWithBobo = async (
   prompt: string,
   userId: string,
   channelHistoryContext?: string,
-  image?: { buffer: Buffer; mimeType: string },
-  historyImages?: { buffer: Buffer; mimeType: string }[],
+  image?: { buffer: Buffer; mimeType: string; description?: string },
+  historyImages?: { buffer: Buffer; mimeType: string; description?: string }[],
   onStatusUpdate?: (statusText: string) => Promise<void>,
   authorName?: string
 ): Promise<string> => {
@@ -219,8 +219,29 @@ export const chatWithBobo = async (
     const promptMentionsImage = IMAGE_KEYWORDS.test(prompt)
     const shouldIncludeHistoryImages = !!image || promptMentionsImage
 
+    // 先放最新的主圖 (Current/Replied image)
+    if (image) {
+      if (image.description) {
+        initialParts.push({
+          text: `【此圖片對應的訊息內容】\n${image.description}`
+        })
+      }
+      initialParts.push({
+        inlineData: {
+          mimeType: image.mimeType,
+          data: image.buffer.toString('base64')
+        }
+      })
+    }
+
+    // 再放歷史圖片 (由新到舊)
     if (shouldIncludeHistoryImages && historyImages && historyImages.length > 0) {
       for (const histImg of historyImages) {
+        if (histImg.description) {
+          initialParts.push({
+            text: `【此歷史圖片對應的訊息內容】\n${histImg.description}`
+          })
+        }
         initialParts.push({
           inlineData: {
             mimeType: histImg.mimeType,
@@ -228,15 +249,6 @@ export const chatWithBobo = async (
           }
         })
       }
-    }
-
-    if (image) {
-      initialParts.push({
-        inlineData: {
-          mimeType: image.mimeType,
-          data: image.buffer.toString('base64')
-        }
-      })
     }
 
     initialParts.push({
