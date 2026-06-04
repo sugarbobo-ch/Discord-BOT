@@ -123,62 +123,81 @@ export const executeGenAI = async <T>(
     throw new Error('Gemini API key is not configured.')
   }
 
-  const triedKeys = new Set<string>()
   let lastError: any = null
+  const maxRetries = 3
+  const baseDelayMs = process.env.NODE_ENV === 'test' ? 1 : 1000
 
-  for (let attempt = 0; attempt < keys.length; attempt++) {
-    const now = Date.now()
-    const availableKeys = keys.filter(k => !triedKeys.has(k.key))
-    if (availableKeys.length === 0) {
-      break
-    }
+  for (let retryAttempt = 0; retryAttempt <= maxRetries; retryAttempt++) {
+    const triedKeys = new Set<string>()
+    let hasTransientOrRateLimitError = false
 
-    // Pick the best key:
-    // 1. One that is not on cooldown.
-    // 2. Otherwise, the one with the earliest cooldown expiration.
-    let selectedKeyInfo = availableKeys.find(k => k.cooldownUntil <= now)
-    if (!selectedKeyInfo) {
-      selectedKeyInfo = availableKeys.reduce((earliest, current) =>
-        current.cooldownUntil < earliest.cooldownUntil ? current : earliest
-      , availableKeys[0])
-    }
-
-    const key = selectedKeyInfo.key
-    triedKeys.add(key)
-
-    try {
-      const ai = getAiClient(key)
-      return await fn(ai)
-    } catch (error: any) {
-      lastError = error
-      const status = error.status || error.response?.status
-      const errorMessage = error.message || ''
-      const isQuotaOrRateLimit =
-        status === 429 ||
-        errorMessage.includes('RESOURCE_EXHAUSTED') ||
-        errorMessage.toLowerCase().includes('quota') ||
-        errorMessage.toLowerCase().includes('limit')
-
-      const isTransientError =
-        status === 502 ||
-        status === 503 ||
-        status === 504 ||
-        error.code === 'ECONNABORTED' ||
-        errorMessage.toLowerCase().includes('timeout') ||
-        errorMessage.toLowerCase().includes('connect')
-
-      if (isQuotaOrRateLimit) {
-        console.warn(`[Gemini API Key Rate Limited] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
-        selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
-      } else if (status === 403 || status === 401) {
-        console.warn(`[Gemini API Key Auth/Permission Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
-        selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
-      } else if (isTransientError) {
-        console.warn(`[Gemini API Key Transient Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
-        selectedKeyInfo.cooldownUntil = Date.now() + 2 * 60 * 1000 // 2 minutes cooldown
-      } else {
-        throw error
+    for (let attempt = 0; attempt < keys.length; attempt++) {
+      const now = Date.now()
+      const availableKeys = keys.filter(k => !triedKeys.has(k.key))
+      if (availableKeys.length === 0) {
+        break
       }
+
+      // Pick the best key:
+      // 1. One that is not on cooldown.
+      // 2. Otherwise, the one with the earliest cooldown expiration.
+      let selectedKeyInfo = availableKeys.find(k => k.cooldownUntil <= now)
+      if (!selectedKeyInfo) {
+        selectedKeyInfo = availableKeys.reduce((earliest, current) =>
+          current.cooldownUntil < earliest.cooldownUntil ? current : earliest
+        , availableKeys[0])
+      }
+
+      const key = selectedKeyInfo.key
+      triedKeys.add(key)
+
+      try {
+        const ai = getAiClient(key)
+        return await fn(ai)
+      } catch (error: any) {
+        lastError = error
+        const status = error.status || error.response?.status
+        const errorMessage = error.message || ''
+        const isQuotaOrRateLimit =
+          status === 429 ||
+          errorMessage.includes('RESOURCE_EXHAUSTED') ||
+          errorMessage.toLowerCase().includes('quota') ||
+          errorMessage.toLowerCase().includes('limit')
+
+        const isTransientError =
+          status === 500 ||
+          status === 502 ||
+          status === 503 ||
+          status === 504 ||
+          status === 'INTERNAL' ||
+          error.code === 'ECONNABORTED' ||
+          errorMessage.toLowerCase().includes('timeout') ||
+          errorMessage.toLowerCase().includes('connect') ||
+          errorMessage.toLowerCase().includes('internal error')
+
+        if (isQuotaOrRateLimit) {
+          console.warn(`[Gemini API Key Rate Limited] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+          selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
+          hasTransientOrRateLimitError = true
+        } else if (status === 403 || status === 401) {
+          console.warn(`[Gemini API Key Auth/Permission Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+          selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
+        } else if (isTransientError) {
+          console.warn(`[Gemini API Key Transient Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+          selectedKeyInfo.cooldownUntil = Date.now() + 2 * 60 * 1000 // 2 minutes cooldown
+          hasTransientOrRateLimitError = true
+        } else {
+          throw error
+        }
+      }
+    }
+
+    if (hasTransientOrRateLimitError && retryAttempt < maxRetries) {
+      const delay = baseDelayMs * Math.pow(2, retryAttempt)
+      console.warn(`[Gemini API executeGenAI] All keys failed with retryable errors. Retrying (attempt ${retryAttempt + 1}/${maxRetries}) after ${delay}ms...`)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    } else {
+      break
     }
   }
 

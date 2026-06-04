@@ -14,6 +14,7 @@ import {
 } from '../../src/utils/gemini'
 import { getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
+import auth from '../../config/auth.json'
 
 // Hoisted mock function for generateContent
 const { mockGenerateContent } = vi.hoisted(() => {
@@ -870,15 +871,21 @@ describe('Gemini Utility Tests', () => {
   describe('API Key Rotation and Switching', () => {
     let originalEnvKeys: string | undefined
     let originalEnvKey: string | undefined
+    let originalAuthKeys: string[] | undefined
+    let originalAuthKey: string | undefined
 
     beforeEach(() => {
       originalEnvKeys = process.env.GEMINI_API_KEYS
       originalEnvKey = process.env.GEMINI_API_KEY
+      originalAuthKeys = (auth as any).geminiApiKeys
+      originalAuthKey = (auth as any).geminiApiKey
     })
 
     afterEach(() => {
       process.env.GEMINI_API_KEYS = originalEnvKeys
       process.env.GEMINI_API_KEY = originalEnvKey
+      ;(auth as any).geminiApiKeys = originalAuthKeys
+      ;(auth as any).geminiApiKey = originalAuthKey
     })
 
     test('should parse API keys from env and config', () => {
@@ -969,8 +976,57 @@ describe('Gemini Utility Tests', () => {
 
       expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success')
     })
-  })
 
+    test('should retry when single key encounters transient error (503) and succeed subsequently', async () => {
+      ;(auth as any).geminiApiKeys = []
+      ;(auth as any).geminiApiKey = undefined
+      process.env.GEMINI_API_KEY = ''
+      process.env.GEMINI_API_KEYS = 'single_retry_key'
+      getApiKeys()
+
+      // First call fails with 503
+      mockGenerateContent.mockRejectedValueOnce({
+        status: 503,
+        message: 'Service Unavailable'
+      })
+      // Second call succeeds
+      mockGenerateContent.mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'Succeeded on retry' }] } }]
+      })
+
+      const reply = await executeGenAI((ai) => ai.models.generateContent({
+        model: 'model',
+        contents: [{ parts: [{ text: 'test' }] }]
+      }))
+
+      expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Succeeded on retry')
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+    })
+
+    test('should throw error after max retries when single key repeatedly encounters transient error (503)', async () => {
+      ;(auth as any).geminiApiKeys = []
+      ;(auth as any).geminiApiKey = undefined
+      process.env.GEMINI_API_KEY = ''
+      process.env.GEMINI_API_KEYS = 'single_retry_fail_key'
+      getApiKeys()
+
+      // Fail 4 times (first attempt + 3 retries)
+      mockGenerateContent
+        .mockRejectedValueOnce({ status: 503, message: 'Service Unavailable' })
+        .mockRejectedValueOnce({ status: 503, message: 'Service Unavailable' })
+        .mockRejectedValueOnce({ status: 503, message: 'Service Unavailable' })
+        .mockRejectedValueOnce({ status: 503, message: 'Service Unavailable' })
+
+      await expect(
+        executeGenAI((ai) => ai.models.generateContent({
+          model: 'model',
+          contents: [{ parts: [{ text: 'test' }] }]
+        }))
+      ).rejects.toThrow('Service Unavailable')
+
+      expect(mockGenerateContent).toHaveBeenCalledTimes(4)
+    })
+  })
   describe('isPotentialStockQuery', () => {
     test('should return false for generic buy/sell queries even with bot name', () => {
       expect(isPotentialStockQuery('波波 我要買嗎')).toBe(false)
