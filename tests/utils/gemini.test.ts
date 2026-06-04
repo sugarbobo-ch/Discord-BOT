@@ -8,7 +8,9 @@ import {
   getChineseNameWithAI,
   cleanLatexSymbols,
   getApiKeys,
-  executeGenAI
+  executeGenAI,
+  isPotentialStockQuery,
+  getNeutralLoadingStatus
 } from '../../src/utils/gemini'
 import { getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
@@ -968,4 +970,38 @@ describe('Gemini Utility Tests', () => {
       expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success')
     })
   })
+
+  describe('isPotentialStockQuery', () => {
+    test('should return false for generic buy/sell queries even with bot name', () => {
+      expect(isPotentialStockQuery('波波 我要買嗎')).toBe(false)
+      expect(isPotentialStockQuery('波波我要賣嗎')).toBe(false)
+      expect(isPotentialStockQuery('我要買嗎')).toBe(false)
+      expect(isPotentialStockQuery('我要賣嗎')).toBe(false)
+      expect(isPotentialStockQuery('我要買嗎，波波？')).toBe(false)
+      expect(isPotentialStockQuery('bobo 我要買嗎')).toBe(false)
+      expect(isPotentialStockQuery('我要買嗎 bobo')).toBe(false)
+    })
+
+    test('should return true when explicit stock targets are present', () => {
+      expect(isPotentialStockQuery('波波，台積電我要買嗎')).toBe(true)
+      expect(isPotentialStockQuery('我要買波波嗎')).toBe(true)
+      expect(isPotentialStockQuery('我要買波波')).toBe(true)
+      expect(isPotentialStockQuery('波波，可以買波波嗎')).toBe(true)
+      expect(isPotentialStockQuery('我要買 2330 嗎')).toBe(true)
+    })
+
+    test('should return false for empty or bot-only queries', () => {
+      expect(isPotentialStockQuery('波波')).toBe(false)
+      expect(isPotentialStockQuery('')).toBe(false)
+    })
+  })
+
+  describe('getNeutralLoadingStatus', () => {
+    test('should return a non-empty string', () => {
+      const status = getNeutralLoadingStatus()
+      expect(status).toBeTypeOf('string')
+      expect(status.length).toBeGreaterThan(0)
+    })
+  })
 })
+

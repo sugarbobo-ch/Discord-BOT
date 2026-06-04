@@ -12,7 +12,8 @@ import {
   isPotentialStockQuery,
   detectStocksWithAI,
   getProgressStatus,
-  getStockPriceTool
+  getStockPriceTool,
+  getNeutralLoadingStatus
 } from './stock'
 
 // Cooldown 限制 (毫秒)
@@ -100,7 +101,7 @@ export const chatWithBobo = async (
   if (isPotentialStockQuery(prompt)) {
     try {
       if (onStatusUpdate) {
-        await onStatusUpdate('🔍 正在分析對話以判定是否提及股票標的... 🧐')
+        await onStatusUpdate(getNeutralLoadingStatus())
       }
       const analysis = await detectStocksWithAI(prompt, apiKey)
       if (analysis.isMentioningStock && analysis.stocks.length > 0) {
