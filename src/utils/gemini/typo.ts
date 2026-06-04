@@ -13,6 +13,8 @@ export const roastTypo = async (
   typo: string,
   targetId: string
 ): Promise<string | null> => {
+  console.log(`[AI Typo Roast Triggered] Target: ${targetId} | Content: "${content.replace(/\n/g, ' ')}" | Typo: "${typo}"`)
+
   const apiKey = getApiKey()
   if (!apiKey) return null
 
@@ -20,12 +22,14 @@ export const roastTypo = async (
   const now = Date.now()
   const lastTypoTime = typoCooldownMap.get(targetId) || 0
   if (now - lastTypoTime < SERVER_TYPO_COOLDOWN) {
+    console.log(`[AI Typo Roast Cooldown] Target: ${targetId}`)
     return null // 進入冷卻則降級回傳 null，使 index.ts 自動改用免費的本地硬編碼回覆
   }
   typoCooldownMap.set(targetId, now)
 
   // 2. Prompt Injection 靜態防禦
   if (hasPromptInjection(content)) {
+    console.log(`[AI Typo Roast Blocked - Prompt Injection] Target: ${targetId}`)
     return null
   }
 
@@ -57,9 +61,10 @@ export const roastTypo = async (
           `- Full Response: ${JSON.stringify(response || {})}`
       )
     }
+    console.log(`[AI Typo Roast Response] Target: ${targetId} | Response: "${text || 'none'}"`)
     return text || null
   } catch (error) {
-    console.error('Gemini Roast Typo Error:', error)
+    console.error(`[AI Typo Roast Error] Target: ${targetId} | Error:`, error)
     return null
   }
 }

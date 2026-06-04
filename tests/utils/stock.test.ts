@@ -200,6 +200,125 @@ describe('Stock Utility Tests', () => {
     })
   })
 
+  describe('getStockPrice Fallback Chain', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    test('should return TWSE price data on TWSE success (Tier 1)', async () => {
+      const mockCookieResponse = {
+        headers: {
+          'set-cookie': ['JSESSIONID=1234567890; Path=/']
+        },
+        status: 200
+      }
+      const mockTWSEResponse = {
+        data: {
+          msgArray: [
+            {
+              z: '272.5',
+              y: '275.0',
+              n: '頎邦',
+              l: '256.5',
+              h: '279.5',
+              v: '39000',
+              o: '269.0'
+            }
+          ]
+        },
+        status: 200
+      }
+
+      const axiosSpy = vi.spyOn(axios, 'get')
+        .mockResolvedValueOnce(mockCookieResponse as any)
+        .mockResolvedValueOnce(mockTWSEResponse as any)
+
+      const result = await getStockPrice('6147.TWO')
+
+      expect(axiosSpy).toHaveBeenCalledTimes(2)
+      expect(result.symbol).toBe('6147.TWO')
+      expect(result.price).toBe(272.5)
+      expect(result.change).toBe(-2.5)
+      expect(result.name).toBe('頎邦')
+    })
+
+    test('should fallback to Yahoo TW Scraper if TWSE fails or returns z="-" (Tier 2)', async () => {
+      const mockCookieResponse = {
+        headers: {},
+        status: 200
+      }
+      const mockTWSEResponse = {
+        data: {
+          msgArray: [
+            {
+              z: '-', // Transaction price is "-"
+              y: '275.0',
+              n: '頎邦'
+            }
+          ]
+        },
+        status: 200
+      }
+      const mockYahooTWHTML = `
+        <html>
+          <body>
+            <script>
+              root.App.main = {
+                context: {
+                  dispatcher: {
+                    stores: {
+                      QuoteFundamental: {
+                        quote: {
+                          data: {
+                            price: { raw: '271.5' },
+                            changePercent: '-1.27%',
+                            symbolName: '頎邦',
+                            regularMarketDayLow: { raw: '256.5' },
+                            regularMarketDayHigh: { raw: '279.5' },
+                            volume: '39414000',
+                            regularMarketPreviousClose: { raw: '275.0' },
+                            regularMarketOpen: { raw: '269.0' }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              };
+            </script>
+          </body>
+        </html>
+      `
+
+      const axiosSpy = vi.spyOn(axios, 'get')
+        .mockResolvedValueOnce(mockCookieResponse as any)
+        .mockResolvedValueOnce(mockTWSEResponse as any)
+        .mockResolvedValueOnce({ data: mockYahooTWHTML, status: 200 } as any)
+
+      const result = await getStockPrice('6147.TWO')
+
+      expect(axiosSpy).toHaveBeenCalledTimes(3)
+      expect(result.symbol).toBe('6147.TWO')
+      expect(result.price).toBe(271.5)
+      expect(result.changePercent).toBe(-1.27)
+    })
+
+    test('should fallback to Yahoo Finance Global if both TWSE and Yahoo TW fail (Tier 3)', async () => {
+      vi.spyOn(axios, 'get').mockRejectedValue(new Error('Network error'))
+      const quoteSpy = vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValue({
+        regularMarketPrice: 266,
+        currency: 'TWD',
+        longName: 'Chipbond Technology'
+      } as any)
+
+      const result = await getStockPrice('6147.TWO')
+
+      expect(result.symbol).toBe('6147.TWO')
+      expect(result.price).toBe(266)
+      expect(quoteSpy).toHaveBeenCalledWith('6147.TWO')
+    })
+  })
+
   describe('getStockSlogan', () => {
     test('should return correct slogans for matching stock names', () => {
       expect(getStockSlogan('華邦電')).toBe('買入華邦電 觸碰高壓電')

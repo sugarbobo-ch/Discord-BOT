@@ -33,6 +33,7 @@ vi.mock('@google/genai', async (importOriginal) => {
 })
 
 vi.mock('yahoo-finance2')
+vi.mock('axios')
 vi.mock('../../src/utils/stock', async (importOriginal) => {
   const actual = await importOriginal() as any
   return {

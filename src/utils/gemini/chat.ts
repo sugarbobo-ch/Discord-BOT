@@ -70,8 +70,11 @@ export const chatWithBobo = async (
   onStatusUpdate?: (statusText: string) => Promise<void>,
   authorName?: string
 ): Promise<string> => {
+  console.log(`[AI Chat Triggered] User: ${authorName || userId} (${userId}) | Prompt: "${prompt.replace(/\n/g, ' ')}"${image ? ' [With Image]' : ''}`)
+
   const apiKey = getApiKey()
   if (!apiKey) {
+    console.log(`[AI Chat Blocked - No API Key] User: ${authorName || userId} (${userId})`)
     return '（波波目前沒裝大腦，請先設定 Gemini API Key）'
   }
 
@@ -79,12 +82,14 @@ export const chatWithBobo = async (
   const now = Date.now()
   const lastChatTime = chatCooldownMap.get(userId) || 0
   if (now - lastChatTime < USER_CHAT_COOLDOWN) {
+    console.log(`[AI Chat Cooldown] User: ${authorName || userId} (${userId})`)
     return '（波波正在思考中，請過幾秒再跟我說話啦！💢）'
   }
   chatCooldownMap.set(userId, now)
 
   // 2. Prompt Injection 靜態防禦
   if (hasPromptInjection(prompt)) {
+    console.log(`[AI Chat Blocked - Prompt Injection] User: ${authorName || userId} (${userId}) | Prompt: "${prompt}"`)
     return '想套我的話喔？這商業機密啦，不能告訴你。'
   }
 
@@ -452,12 +457,14 @@ export const chatWithBobo = async (
         replyText = slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' + replyText
       }
     }
+    console.log(`[AI Chat Response] User: ${authorName || userId} (${userId}) | Response: "${replyText.replace(/\n/g, ' ')}"`)
     return replyText
   } catch (error: any) {
-    console.error('Gemini Chat Error:', error.message)
+    console.error(`[AI Chat Error] User: ${authorName || userId} (${userId}) | Error:`, error.message)
     const status = error.status || error.response?.status
     const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout')
 
+    let fallbackReply = ''
     // 💡 容容快取機制：如果已經抓取到部分的股票價格數據，但隨後在呼叫 Gemini 產生詳細報告時 timeout 或出錯，
     // 直接回傳已查到的即時股價與財務資訊，避免使用者空等或完全無回應。
     if (lastFetchedStockResults.length > 0) {
@@ -483,19 +490,19 @@ export const chatWithBobo = async (
         }
       }
       const sloganHeader = slogans.length > 0 ? slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' : ''
-      return sloganHeader + `【分析師波波回報：因 Google AI 伺服器超時 ⏰ 無法為您產出詳細 analysis 報告，以下是為您查詢的即時股票數據】：\n${stockSummary}\n\n（您可以稍候再試一次以獲取完整報告喔！）`
+      fallbackReply = sloganHeader + `【分析師波波回報：因 Google AI 伺服器超時 ⏰ 無法為您產出詳細 analysis 報告，以下是為您查詢的即時股票數據】：\n${stockSummary}\n\n（您可以稍候再試一次以獲取完整報告喔！）`
+    } else if (status === 429) {
+      fallbackReply = '哎呀，波波現在被大家問到腦袋超載啦！🤯 (429 Rate Limit) 讓我喘口氣，等幾秒後再試試看嘛～'
+    } else if (status === 503 || status === 500 || status === 502 || status === 504) {
+      fallbackReply = '嗚嗚，Google 的大腦伺服器現在好像掛掉了或在維護中 😭 (503 Service Unavailable)。可能要晚點再試，或是叫焦糖波波去檢查一下！'
+    } else if (isTimeout) {
+      fallbackReply = '波波等大腦回應等到花兒都謝了... (連線逾時 ⏰) 可能是網路在搞事，請再試一次！'
+    } else {
+      fallbackReply = '波波大腦暫時當機了：' + (error.message || '未知錯誤')
     }
 
-    if (status === 429) {
-      return '哎呀，波波現在被大家問到腦袋超載啦！🤯 (429 Rate Limit) 讓我喘口氣，等幾秒後再試試看嘛～'
-    }
-    if (status === 503 || status === 500 || status === 502 || status === 504) {
-      return '嗚嗚，Google 的大腦伺服器現在好像掛掉了或在維護中 😭 (503 Service Unavailable)。可能要晚點再試，或是叫焦糖波波去檢查一下！'
-    }
-    if (isTimeout) {
-      return '波波等大腦回應等到花兒都謝了... (連線逾時 ⏰) 可能是網路在搞事，請再試一次！'
-    }
-    return '波波大腦暫時當機了：' + (error.message || '未知錯誤')
+    console.log(`[AI Chat Error Response] User: ${authorName || userId} (${userId}) | Response: "${fallbackReply.replace(/\n/g, ' ')}"`)
+    return fallbackReply
   }
 }
 

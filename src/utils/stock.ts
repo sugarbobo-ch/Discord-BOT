@@ -225,8 +225,124 @@ interface CacheEntry {
 const stockCache = new Map<string, CacheEntry>()
 const CACHE_TTL = 60 * 1000 // 60 seconds
 
+let twseCookieCache: { header: string; expires: number } | null = null
+
+async function getTwseCookie(): Promise<string> {
+  const now = Date.now()
+  if (twseCookieCache && twseCookieCache.expires > now) {
+    return twseCookieCache.header
+  }
+
+  try {
+    const sessionResponse = await axios.get('https://mis.twse.com.tw/stock/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 5000
+    })
+    const cookies = sessionResponse.headers['set-cookie']
+    const cookieHeader = cookies ? cookies.map(c => c.split(';')[0]).join('; ') : ''
+    twseCookieCache = {
+      header: cookieHeader,
+      expires: now + 30 * 60 * 1000
+    }
+    return cookieHeader
+  } catch (error: any) {
+    console.error('[TWSE Cookie Fetch Error]:', error.message)
+    return ''
+  }
+}
+
+async function fetchFromTWSE(ticker: string): Promise<Record<string, any> | null> {
+  const isOtc = ticker.toUpperCase().endsWith('.TWO')
+  const code = ticker.split('.')[0]
+  const ex_ch = `${isOtc ? 'otc' : 'tse'}_${code}.tw`
+
+  try {
+    const cookieHeader = await getTwseCookie()
+    const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex_ch}&json=1&delay=0&_=${Date.now()}`
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Cookie': cookieHeader,
+        'Referer': 'https://mis.twse.com.tw/stock/'
+      },
+      timeout: 5000
+    })
+
+    const msg = response.data?.msgArray?.[0]
+    if (msg && msg.z && msg.z !== '-') {
+      const price = parseFloat(msg.z)
+      const prevClose = parseFloat(msg.y)
+      const change = price - prevClose
+      const changePercent = prevClose !== 0 ? (change / prevClose) * 100 : 0
+
+      return {
+        symbol: ticker,
+        price: price,
+        currency: 'TWD',
+        name: msg.n || null,
+        change: change,
+        changePercent: changePercent,
+        dayLow: msg.l !== '-' ? parseFloat(msg.l) : null,
+        dayHigh: msg.h !== '-' ? parseFloat(msg.h) : null,
+        volume: parseInt(msg.v, 10) || 0,
+        previousClose: prevClose,
+        open: msg.o !== '-' ? parseFloat(msg.o) : null
+      }
+    }
+  } catch (error: any) {
+    console.error(`[TWSE Fetch Error] Failed for ${ticker}:`, error.message)
+  }
+  return null
+}
+
+async function fetchFromYahooTWScraper(ticker: string): Promise<Record<string, any> | null> {
+  const url = `https://tw.stock.yahoo.com/quote/${ticker}`
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 5000
+    })
+    const html = response.data
+    const matchState = html.match(/root\.App\.main\s*=\s*(\{[\s\S]+?\});\n/m)
+    if (matchState) {
+      const jsonText = matchState[1]
+      const parsed = Function(`return ${jsonText}`)()
+      const quote = parsed?.context?.dispatcher?.stores?.QuoteFundamental?.quote?.data
+      if (quote && quote.price && quote.price.raw !== undefined && quote.price.raw !== null) {
+        let changePercent = 0
+        if (typeof quote.changePercent === 'string') {
+          changePercent = parseFloat(quote.changePercent.replace('%', '')) || 0
+        } else if (typeof quote.changePercent === 'number') {
+          changePercent = quote.changePercent
+        }
+
+        return {
+          symbol: ticker,
+          price: parseFloat(quote.price.raw),
+          currency: quote.currency || 'TWD',
+          name: quote.symbolName || null,
+          change: quote.change && quote.change.raw !== undefined ? parseFloat(quote.change.raw) : null,
+          changePercent: changePercent,
+          dayLow: quote.regularMarketDayLow && quote.regularMarketDayLow.raw !== undefined ? parseFloat(quote.regularMarketDayLow.raw) : null,
+          dayHigh: quote.regularMarketDayHigh && quote.regularMarketDayHigh.raw !== undefined ? parseFloat(quote.regularMarketDayHigh.raw) : null,
+          volume: quote.volume ? parseInt(quote.volume, 10) : 0,
+          previousClose: quote.regularMarketPreviousClose && quote.regularMarketPreviousClose.raw !== undefined ? parseFloat(quote.regularMarketPreviousClose.raw) : null,
+          open: quote.regularMarketOpen && quote.regularMarketOpen.raw !== undefined ? parseFloat(quote.regularMarketOpen.raw) : null
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error(`[Yahoo TW Scraper Error] Failed for ${ticker}:`, error.message)
+  }
+  return null
+}
+
 /**
- * 查詢指定股票代碼的最新股價與財務數據（使用 yahoo-finance2，支援 60 秒記憶體快取）
+ * 查詢指定股票代碼的最新股價與財務數據（支援三層降級回退鏈與 60 秒記憶體快取）
  */
 export async function getStockPrice(tickerSymbol: string): Promise<Record<string, any>> {
   const normalizedTicker = tickerSymbol.trim().toUpperCase()
@@ -241,32 +357,57 @@ export async function getStockPrice(tickerSymbol: string): Promise<Record<string
     return cached.data
   }
 
-  let quote: any = null
   let actualTicker = normalizedTicker
   if (COMMON_STOCK_MAP[normalizedTicker]) {
     actualTicker = COMMON_STOCK_MAP[normalizedTicker]
   }
 
+  const twStockRegex = /^\d{4,6}[A-Z]?$/
+  if (twStockRegex.test(actualTicker)) {
+    await initTaiwanStockMap()
+    const resolvedTwTicker = getTaiwanStockTicker(actualTicker)
+    if (resolvedTwTicker) {
+      actualTicker = resolvedTwTicker
+    }
+  }
+
+  const isTaiwanStock = actualTicker.endsWith('.TW') || actualTicker.endsWith('.TWO')
+
+  // Tier 1 & Tier 2: Try TWSE and Yahoo TW Web Scraper for Taiwan Stocks
+  if (isTaiwanStock) {
+    const twseResult = await fetchFromTWSE(actualTicker)
+    if (twseResult) {
+      stockCache.set(normalizedTicker, { data: twseResult, timestamp: now })
+      return twseResult
+    }
+
+    const yahooTwResult = await fetchFromYahooTWScraper(actualTicker)
+    if (yahooTwResult) {
+      stockCache.set(normalizedTicker, { data: yahooTwResult, timestamp: now })
+      return yahooTwResult
+    }
+  }
+
+  // Tier 3: Fallback to global Yahoo Finance API
+  let quote: any = null
   try {
-    const twStockRegex = /^\d{4,6}[A-Z]?$/
-    if (twStockRegex.test(normalizedTicker)) {
-      // 嘗試 .TW 後綴
+    if (!isTaiwanStock && twStockRegex.test(actualTicker)) {
       try {
-        actualTicker = `${normalizedTicker}.TW`
-        quote = await yahooFinance.quote(actualTicker)
+        const testTicker = `${actualTicker}.TW`
+        quote = await yahooFinance.quote(testTicker)
+        actualTicker = testTicker
       } catch (twErr) {
-        // 如果 .TW 失敗，嘗試 .TWO 後綴
         try {
-          actualTicker = `${normalizedTicker}.TWO`
-          quote = await yahooFinance.quote(actualTicker)
+          const testTicker = `${actualTicker}.TWO`
+          quote = await yahooFinance.quote(testTicker)
+          actualTicker = testTicker
         } catch (twoErr: any) {
-          console.error(`[Stock API Error] Failed to fetch ${normalizedTicker} with both .TW and .TWO:`, twoErr.message)
-          // 若皆失敗，仍使用 .TW 後綴回傳錯誤資訊
-          actualTicker = `${normalizedTicker}.TW`
+          console.error(`[Stock API Error] Failed to fetch ${actualTicker} with both .TW and .TWO:`, twoErr.message)
+          actualTicker = `${actualTicker}.TW`
         }
       }
     } else {
-      quote = await yahooFinance.quote(normalizedTicker)
+      quote = await yahooFinance.quote(actualTicker)
     }
 
     if (!quote || quote.regularMarketPrice === undefined || quote.regularMarketPrice === null) {
@@ -320,12 +461,11 @@ export async function getStockPrice(tickerSymbol: string): Promise<Record<string
     stockCache.set(normalizedTicker, { data: successResult, timestamp: now })
     return successResult
   } catch (error: any) {
-    console.error(`[Stock API Error] Failed to fetch ${normalizedTicker}:`, error.message)
+    console.error(`[Stock API Error] Failed to fetch ${actualTicker}:`, error.message)
     const errorResult = {
       symbol: actualTicker,
       error: `查詢股票代碼 "${actualTicker}" 時發生錯誤`
     }
-    // 對於錯誤也快取一小段時間 (比如 10 秒) 以防被重複請求打爆
     stockCache.set(normalizedTicker, { data: errorResult, timestamp: now - CACHE_TTL + 10000 })
     return errorResult
   }
@@ -454,6 +594,7 @@ export function extractTickers(text: string): string[] {
  */
 export function clearStockCache(): void {
   stockCache.clear()
+  twseCookieCache = null
 }
 
 /**

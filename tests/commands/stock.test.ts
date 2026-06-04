@@ -5,6 +5,7 @@ import { searchStockTickerWithYahoo, fetchStockNameFromYahooPage, clearStockCach
 import yahooFinance from 'yahoo-finance2'
 
 vi.mock('yahoo-finance2')
+vi.mock('axios')
 vi.mock('../../src/utils/gemini', () => ({
   searchStockTickerWithAI: vi.fn(),
   getChineseNameWithAI: vi.fn()
