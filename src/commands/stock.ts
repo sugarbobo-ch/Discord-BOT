@@ -1,6 +1,6 @@
 import { Message, EmbedBuilder } from 'discord.js'
 import { Command } from './command.interface'
-import { getStockPrice, COMMON_STOCK_MAP, searchStockTickerWithYahoo, fetchStockNameFromYahooPage } from '../utils/stock'
+import { getStockPrice, COMMON_STOCK_MAP, searchStockTickerWithYahoo, fetchStockNameFromYahooPage, lookupStockTicker, getTaiwanStockName, getStockSlogan } from '../utils/stock'
 import { searchStockTickerWithAI, getChineseNameWithAI } from '../utils/gemini'
 
 function formatValue(val: any, isPercent = false): string {
@@ -31,11 +31,10 @@ export class StockCommand implements Command {
     let statusMessage: Message | null = null
     let yahooMatchedName: string | null = null
 
-    const upperQuery = query.toUpperCase()
-    if (COMMON_STOCK_MAP[upperQuery]) {
-      targetTicker = COMMON_STOCK_MAP[upperQuery]
-    } else if (COMMON_STOCK_MAP[query]) {
-      targetTicker = COMMON_STOCK_MAP[query]
+    // 1. Try resolving using lookupStockTicker first (checks NICKNAME_MAP, COMMON_STOCK_MAP, and taiwanStockMap)
+    const resolved = await lookupStockTicker(query)
+    if (resolved) {
+      targetTicker = resolved
     } else {
       const isDirectTicker = /^[A-Za-z0-9.-]+$/.test(query)
       
@@ -51,9 +50,11 @@ export class StockCommand implements Command {
       if (yahooResult) {
         targetTicker = yahooResult.symbol
         yahooMatchedName = yahooResult.name
-      } else if (!isDirectTicker) {
-        const resolved = await searchStockTickerWithAI(query)
-        if (!resolved) {
+      } else if (isDirectTicker) {
+        targetTicker = query
+      } else {
+        const resolvedAI = await searchStockTickerWithAI(query)
+        if (!resolvedAI) {
           const errorText = `❌ 找不到與「${query}」相關的股票代碼。請嘗試輸入更精確的名稱或直接輸入代號（例如 \`2330\` 或 \`AAPL\`）。`
           if (statusMessage) {
             await statusMessage.edit(errorText)
@@ -62,7 +63,7 @@ export class StockCommand implements Command {
           }
           return
         }
-        targetTicker = resolved
+        targetTicker = resolvedAI
       }
     }
 
@@ -93,6 +94,11 @@ export class StockCommand implements Command {
             break
           }
         }
+      }
+
+      // Try local stock list name resolution
+      if (!chineseName && (result.symbol.endsWith('.TW') || result.symbol.endsWith('.TWO'))) {
+        chineseName = getTaiwanStockName(result.symbol)
       }
 
       if (!chineseName && /[\u4e00-\u9fa5]/.test(query)) {
@@ -173,10 +179,13 @@ export class StockCommand implements Command {
         )
         .setTimestamp()
 
+      const slogan = getStockSlogan(chineseName || query)
+      const content = slogan ? `📣 **${slogan}**` : undefined
+
       if (statusMessage) {
-        await statusMessage.edit({ content: `✅ 已找到「${query}」的代碼為 \`${targetTicker}\`：`, embeds: [embed] })
+        await statusMessage.edit({ content: content || `✅ 已找到「${query}」的代碼為 \`${targetTicker}\`：`, embeds: [embed] })
       } else {
-        await message.reply({ embeds: [embed] })
+        await message.reply({ content, embeds: [embed] })
       }
     } catch (error: any) {
       console.error(`Error querying stock price for ${targetTicker}:`, error)

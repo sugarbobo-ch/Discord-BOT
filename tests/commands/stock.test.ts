@@ -98,6 +98,37 @@ describe('StockCommand Tests', () => {
     }))
   })
 
+  test('should resolve Taiwanese stock nickname via lookupStockTicker and NICKNAME_MAP successfully', async () => {
+    const { taiwanStockMap } = await import('../../src/utils/stock')
+    taiwanStockMap['台積電'] = '2330.TW'
+
+    const quoteSpy = vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValue({
+      regularMarketPrice: 600,
+      currency: 'TWD',
+      displayName: 'TSMC',
+      regularMarketChange: 10,
+      regularMarketChangePercent: 1.69,
+      regularMarketDayLow: 595,
+      regularMarketDayHigh: 605,
+      regularMarketVolume: 12000,
+      regularMarketPreviousClose: 590,
+      regularMarketOpen: 592,
+      fiftyTwoWeekLow: 500,
+      fiftyTwoWeekHigh: 650
+    } as any)
+
+    await stockCommand.execute(mockMessage, ['GG'])
+
+    expect(quoteSpy).toHaveBeenCalledWith('2330.TW')
+    expect(mockMessage.reply).toHaveBeenCalledWith(expect.objectContaining({
+      embeds: expect.any(Array)
+    }))
+
+    const embed = mockMessage.reply.mock.calls[0][0].embeds[0]
+    expect(embed.data.title).toContain('台積電')
+    expect(embed.data.title).toContain('2330.TW')
+  })
+
   test('should call searchStockTickerWithAI for Chinese stocks and edit status message', async () => {
     vi.mocked(searchStockTickerWithAI).mockResolvedValueOnce('2313.TW')
 

@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai'
 import auth from '../../config/auth.json'
-import { getStockPrice, COMMON_STOCK_MAP, searchStockTickerWithYahoo, cleanStockNameForSearch } from './stock'
+import { getStockPrice, COMMON_STOCK_MAP, searchStockTickerWithYahoo, cleanStockNameForSearch, lookupStockTicker, getStockSlogan, getTaiwanStockName, taiwanStockMap, NICKNAME_MAP } from './stock'
 
 const MODEL_NAME = 'gemma-4-31b-it'
 
@@ -181,7 +181,6 @@ export const executeGenAI = async <T>(
         errorMessage.toLowerCase().includes('limit')
 
       const isTransientError =
-        status === 500 ||
         status === 502 ||
         status === 503 ||
         status === 504 ||
@@ -421,16 +420,16 @@ export const detectStocksWithAI = async (
       contents: [
         {
           text:
-            '請分析以下使用者訊息，判斷其中是否提及、詢問或討論特定股票（包含台股、美股，或常見股票暱稱/簡稱如「發哥」代表聯發科、「牙科」代表南亞科、「華崩店」代表華邦電，或 4 位數台股代號等、5 或 6 位數 ETF: 00981A 00403A 00919 等代號）。\n' +
-            '如果使用者訊息僅提及普通的數字，但無 any 股票相關意圖或前後文（例如時間、數量等），請判定 isMentioningStock 為 false。\n' +
-            '請確保股票名稱與代號完全對應。例如台積電為 2330.TW，聯發科為 2454.TW，南亞科為 2408.TW。切勿混淆或配對錯誤的股票代碼。\n' +
+            '請分析以下使用者訊息，判斷其中是否提及、詢問或討論特定股票（包含台股、美股，或常見股票暱稱/簡稱如「發哥」代表聯發科、「二哥」等，或 4 位數台股代號、5 或 6 位數 ETF 代號）。\n' +
+            '如果使用者訊息僅提及普通的數字，但無任何股票相關意圖或前後文，請判定 isMentioningStock 為 false。\n' +
+            '如果是台股，請輸出其股票名稱或常見簡稱（例如：台積電、聯發科）。如果是美股，請直接輸出其英文代號（例如：AAPL、TSLA）。\n' +
             '請只回覆一個 JSON 格式的物件，格式必須精確如下：\n' +
             '{\n' +
             '  "isMentioningStock": true/false,\n' +
             '  "stocks": [\n' +
             '    {\n' +
-            '      "name": "股票名稱或公司名稱，例如：聯發科",\n' +
-            '      "ticker": "適用於 yahooFinance 查詢的股票代號字串，例如 2454.TW，AAPL，2344.TW"\n' +
+            '      "name": "股票名稱或簡稱，例如：聯發科",\n' +
+            '      "ticker": "該股票可能的代碼（若是美股則為代號），例如：2454.TW，AAPL，2330.TW"\n' +
             '    }\n' +
             '  ]\n' +
             '}'
@@ -440,7 +439,6 @@ export const detectStocksWithAI = async (
         }
       ],
       config: {
-        tools: [{ googleSearch: {} }],
         responseMimeType: 'application/json',
         thinkingConfig: {
           thinkingLevel: ThinkingLevel.MINIMAL
@@ -473,6 +471,8 @@ export const searchStockTickerWithAI = async (query: string): Promise<string | n
   }
 
   try {
+    const tools = [{ googleSearch: {} }]
+
     const response = await executeGenAI((ai) => ai.models.generateContent({
       model: MODEL_NAME,
       contents: [
@@ -492,7 +492,7 @@ export const searchStockTickerWithAI = async (query: string): Promise<string | n
         }
       ],
       config: {
-        tools: [{ googleSearch: {} }],
+        tools,
         responseMimeType: 'application/json',
         thinkingConfig: {
           thinkingLevel: ThinkingLevel.MINIMAL
@@ -525,6 +525,81 @@ export const searchStockTickerWithAI = async (query: string): Promise<string | n
     console.error('[searchStockTickerWithAI Error] Failed to search stock ticker:', error.message)
   }
   return null
+}
+
+
+/**
+ * 判斷使用者輸入是否可能與股票有關，避免誤觸 AI 股票分析流程而導致漫長等待
+ */
+export function isPotentialStockQuery(prompt: string): boolean {
+  const normalized = prompt.trim().toLowerCase()
+  if (!normalized) return false
+
+  // 1. 強烈股票特徵詞 (直接觸發)
+  const STRONG_STOCK_KEYWORDS = [
+    '股價', '股票', '行情', '個股', '收盤', '開盤', '指數', '台股', '美股',
+    '目標價', '停損', '套牢', '波段', '糕點', '投顧', '分析師', '法說會',
+    '開高', '開低', '走高', '走低', '跌停', '漲停', '除權息', '填息', '貼息',
+    '融資', '融券', '借券', '做多', '做空', '放空', '補空', '軋空',
+    '上漲', '下跌', '漲', '跌',
+    'stock', 'ticker'
+  ]
+  if (STRONG_STOCK_KEYWORDS.some(kw => normalized.includes(kw))) {
+    return true
+  }
+
+  // 2. 如果包含有順口溜的特定標的，直接觸發
+  const SLOGAN_KEYWORDS = [
+    '群創', '緯創', '微星', '鴻海', '友達', '彩晶', '高端', '技嘉',
+    '緯穎', '陽明', '長榮', '萬海', '星宇', '金寶', '華邦電', '士電', '南亞科'
+  ]
+  if (SLOGAN_KEYWORDS.some(k => normalized.includes(k))) {
+    return true
+  }
+
+  // 3. 4-6 位數純數字且完全匹配已知的股票代碼，直接觸發
+  if (/^\d{4,6}$/.test(normalized) && (taiwanStockMap[normalized] || COMMON_STOCK_MAP[normalized])) {
+    return true
+  }
+
+  // 4. 檢查是否包含股票標的 (4-6 位數純數字，或是對照表中的名字/暱稱)
+  const hasStockTarget =
+    /\b\d{4,6}\b/.test(normalized) ||
+    Object.keys(taiwanStockMap).some(key => key.length >= 2 && normalized.includes(key.toLowerCase())) ||
+    Object.keys(NICKNAME_MAP).some(key => key.length >= 2 && normalized.includes(key.toLowerCase())) ||
+    Object.keys(COMMON_STOCK_MAP).some(key => key.length >= 2 && normalized.includes(key.toLowerCase()))
+
+  if (hasStockTarget) {
+    // 如果有標的，且有動作或股票相關脈絡詞，則觸發
+    const STOCK_ACTION_WORDS = [
+      '買', '賣', '多', '空', '前景', '投資', '分析', '砍', '避險',
+      '進場', '退場', '成本', '加碼', '減碼', '停利', '獲利', '套', '糕'
+    ]
+    if (STOCK_ACTION_WORDS.some(word => normalized.includes(word))) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * 根據已查詢的股票結果，產生帶有順口溜的進度更新文字
+ */
+const getProgressStatus = (defaultMsg: string, stockResults: any[]): string => {
+  if (stockResults.length === 0) return defaultMsg
+  const slogans: string[] = []
+  for (const res of stockResults) {
+    const name = res.symbol ? getTaiwanStockName(res.symbol) : null
+    const slogan = getStockSlogan(name || res.name || '')
+    if (slogan && !slogans.includes(slogan)) {
+      slogans.push(slogan)
+    }
+  }
+  if (slogans.length > 0) {
+    return slogans.map(s => `📣 **${s}**`).join('\n') + `\n\n😜 開玩笑的啦，正在為您撰寫專業的產業體質與股價趨勢分析，請稍後... ✍️`
+  }
+  return defaultMsg
 }
 
 /**
@@ -560,57 +635,55 @@ export const chatWithBobo = async (
   // 提取股票代碼並進行預取
   let stockContext = ''
   const lastFetchedStockResults: any[] = []
-  const POTENTIAL_STOCK_TRIGGER =
-    /(?:\d+|股價|股票|行情|個股|收盤|開盤|指數|台股|美股|stock|ticker|price|買|賣|前景|投資|進場|退場|多|空|低點|高點|糕點|丸子|蒸丸|代號|波段|目標價|獲利|撤退|成本|加碼|減碼|砍|套牢|停損|資產)/i
 
-  if (POTENTIAL_STOCK_TRIGGER.test(prompt)) {
+  if (isPotentialStockQuery(prompt)) {
     try {
       if (onStatusUpdate) {
-        await onStatusUpdate('🔍 波波正在分析您提到的股票標的，請稍等喔... 📈')
+        await onStatusUpdate('🔍 正在分析對話以判定是否提及股票標的... 🧐')
       }
       const analysis = await detectStocksWithAI(prompt, apiKey)
       if (analysis.isMentioningStock && analysis.stocks.length > 0) {
         if (onStatusUpdate) {
-          const stockNames = analysis.stocks.map(s => s.name).join(', ')
-          await onStatusUpdate(`🔍 正在向 Yahoo 財經確認 **${stockNames}** 的股票代碼與最新行情資料... 📊`)
+          await onStatusUpdate('📊 正在比對證交所資料庫以解析股票名稱或代碼... 📂')
         }
         const nameMap = new Map<string, string>()
         const tickers: string[] = []
         for (const stock of analysis.stocks) {
-          if (stock.ticker) {
-            let normalizedTicker = stock.ticker.trim().toUpperCase()
-            const stockNameClean = stock.name.trim()
-            const stockNameCleaned = cleanStockNameForSearch(stockNameClean)
+          const stockNameClean = stock.name.trim()
+          const stockNameCleaned = cleanStockNameForSearch(stockNameClean)
 
-            // 優先在 COMMON_STOCK_MAP 中尋找精確對照以修正錯誤的代碼
-            if (COMMON_STOCK_MAP[stockNameClean]) {
-              normalizedTicker = COMMON_STOCK_MAP[stockNameClean]
-            } else if (COMMON_STOCK_MAP[stockNameCleaned]) {
-              normalizedTicker = COMMON_STOCK_MAP[stockNameCleaned]
-            } else if (COMMON_STOCK_MAP[normalizedTicker]) {
-              normalizedTicker = COMMON_STOCK_MAP[normalizedTicker]
-            } else {
-              // 否則，向 Yahoo 財經搜尋股票代號以確認並修正
-              const yahooResult = await searchStockTickerWithYahoo(stockNameCleaned)
-              if (yahooResult && yahooResult.symbol) {
-                // 檢查搜尋結果的名稱是否與我們查詢的名稱匹配（例如互相包含），以防非預期覆蓋
-                const yahooNameUpper = yahooResult.name.toUpperCase()
-                const cleanedNameUpper = stockNameCleaned.toUpperCase()
-                if (
-                  yahooNameUpper.includes(cleanedNameUpper) ||
-                  cleanedNameUpper.includes(yahooNameUpper)
-                ) {
-                  normalizedTicker = yahooResult.symbol.toUpperCase()
-                }
+          // 1. 優先使用本地快取/對照表進行精確查詢
+          let resolvedTicker = await lookupStockTicker(stockNameCleaned)
+
+          // 2. 若本地找不到，向 Yahoo 財經搜尋確認與修正
+          if (!resolvedTicker) {
+            const yahooResult = await searchStockTickerWithYahoo(stockNameCleaned)
+            if (yahooResult && yahooResult.symbol) {
+              const yahooNameUpper = yahooResult.name.toUpperCase()
+              const cleanedNameUpper = stockNameCleaned.toUpperCase()
+              if (
+                yahooNameUpper.includes(cleanedNameUpper) ||
+                cleanedNameUpper.includes(yahooNameUpper)
+              ) {
+                resolvedTicker = yahooResult.symbol.toUpperCase()
               }
             }
+          }
 
+          // 3. 若皆失敗，最後才使用 AI 產生的 guessed ticker 作為備用
+          const normalizedTicker = resolvedTicker || (stock.ticker ? stock.ticker.trim().toUpperCase() : null)
+
+          if (normalizedTicker) {
             tickers.push(normalizedTicker)
             nameMap.set(normalizedTicker, stock.name)
           }
         }
 
         if (tickers.length > 0) {
+          if (onStatusUpdate) {
+            const stockNames = analysis.stocks.map(s => s.name).join(', ')
+            await onStatusUpdate(`⚡ 正在透過 Yahoo 財經 API 獲取 **${stockNames}** 的最新行情與財務數據... 💸`)
+          }
           const stockResults = await Promise.all(
             tickers.map(async (ticker) => {
               const res = await getStockPrice(ticker)
@@ -644,6 +717,9 @@ export const chatWithBobo = async (
           })
 
           if (stockInfoStrings.length > 0) {
+            if (onStatusUpdate) {
+              await onStatusUpdate(getProgressStatus('📈 正在為您撰寫專業的產業體質與股價趨勢分析... ✍️', lastFetchedStockResults))
+            }
             stockContext = `\n\n【系統資訊 - 當前真實股票數據對照表】\n${stockInfoStrings.join('\n')}\n請「必須且只能」依據上述對照表中提供的真實數據回答使用者的股價與相關詢問。請特別注意：不同的股票代號對應不同的公司/名稱，請勿將 A 公司的股價、漲跌或財務數據誤植給 B 公司，也不要使用資料庫內過時的股價。若資料顯示查詢失敗，請誠實告知使用者查無資料。`
           }
         }
@@ -712,9 +788,12 @@ export const chatWithBobo = async (
       }
     ]
 
-    const hasImages = !!image || (shouldIncludeHistoryImages && !!historyImages && historyImages.length > 0)
-    const tools: any[] = [getStockPriceTool]
-    if (!hasImages) {
+    const isStockQuery = isPotentialStockQuery(prompt)
+    const tools: any[] = []
+
+    if (isStockQuery) {
+      tools.push(getStockPriceTool)
+    } else {
       tools.push({ googleSearch: {} })
     }
 
@@ -737,18 +816,23 @@ export const chatWithBobo = async (
         const currentTools =
           loopCount > 1 ? tools.filter((t: any) => !t.googleSearch) : tools
 
+        const hasSearch = currentTools.some((t: any) => t.googleSearch)
+        const config: any = {
+          tools: currentTools,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL
+          }
+        }
+        if (hasSearch) {
+          config.toolConfig = {
+            includeServerSideToolInvocations: true
+          }
+        }
+
         response = await executeGenAI((ai) => ai.models.generateContent({
           model: MODEL_NAME,
           contents,
-          config: {
-            tools: currentTools,
-            toolConfig: {
-              includeServerSideToolInvocations: true
-            },
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.MINIMAL
-            }
-          }
+          config
         }))
       } catch (error: any) {
         const hasGoogleSearch = tools.some((t: any) => t.googleSearch)
@@ -762,18 +846,23 @@ export const chatWithBobo = async (
             `[Gemini Chat API Error] Encountered 500 error with googleSearch tool. Retrying without googleSearch... Error: ${error.message}`
           )
           const backupTools = tools.filter((t: any) => !t.googleSearch)
+          const hasBackupSearch = backupTools.some((t: any) => t.googleSearch)
+          const backupConfig: any = {
+            tools: backupTools,
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.MINIMAL
+            }
+          }
+          if (hasBackupSearch) {
+            backupConfig.toolConfig = {
+              includeServerSideToolInvocations: true
+            }
+          }
+
           response = await executeGenAI((ai) => ai.models.generateContent({
             model: MODEL_NAME,
             contents,
-            config: {
-              tools: backupTools,
-              toolConfig: {
-                includeServerSideToolInvocations: true
-              },
-              thinkingConfig: {
-                thinkingLevel: ThinkingLevel.MINIMAL
-              }
-            }
+            config: backupConfig
           }))
         } else {
           throw error
@@ -805,7 +894,7 @@ export const chatWithBobo = async (
           .filter(Boolean)
           .join(', ')
         await onStatusUpdate(
-          `🔍 波波正在幫您查詢 **${tickersText}** 的最新真實股價與財務數據，並生成產業分析報告中，請稍等喔... 📊`
+          `⚡ 正在透過 Yahoo 財經 API 獲取 **${tickersText}** 的最新行情與財務數據... 💸`
         )
       }
 
@@ -876,7 +965,7 @@ export const chatWithBobo = async (
 
       // 準備將函式執行結果送回 AI 前，更新進度狀態
       if (onStatusUpdate) {
-        await onStatusUpdate('✍️ 數據已取得！波波正在為您撰寫詳細的產業分析與股價趨勢報告，請稍候... 📝')
+        await onStatusUpdate(getProgressStatus('📈 正在為您撰寫專業的產業體質與股價趨勢分析... ✍️', lastFetchedStockResults))
       }
     }
 
@@ -892,7 +981,22 @@ export const chatWithBobo = async (
           `- Full Response: ${JSON.stringify(lastResponse || {})}`
       )
     }
-    return text || '波波現在頭有點痛，等下再聊。'
+
+    let replyText = text || '波波現在頭有點痛，等下再聊。'
+    if (lastFetchedStockResults.length > 0) {
+      const slogans: string[] = []
+      for (const res of lastFetchedStockResults) {
+        const name = res.symbol ? getTaiwanStockName(res.symbol) : null
+        const slogan = getStockSlogan(name || res.name || '')
+        if (slogan && !slogans.includes(slogan)) {
+          slogans.push(slogan)
+        }
+      }
+      if (slogans.length > 0) {
+        replyText = slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' + replyText
+      }
+    }
+    return replyText
   } catch (error: any) {
     console.error('Gemini Chat Error:', error.message)
     const status = error.status || error.response?.status
@@ -913,7 +1017,17 @@ export const chatWithBobo = async (
           return `- ${res.symbol} 最新數據 (${details.join(', ')})`
         })
         .join('\n')
-      return `【分析師波波回報：因 Google AI 伺服器超時 ⏰ 無法為您產出詳細分析報告，以下是為您查詢的即時股票數據】：\n${stockSummary}\n\n（您可以稍候再試一次以獲取完整報告喔！）`
+
+      const slogans: string[] = []
+      for (const res of lastFetchedStockResults) {
+        const name = res.symbol ? getTaiwanStockName(res.symbol) : null
+        const slogan = getStockSlogan(name || res.name || '')
+        if (slogan && !slogans.includes(slogan)) {
+          slogans.push(slogan)
+        }
+      }
+      const sloganHeader = slogans.length > 0 ? slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' : ''
+      return sloganHeader + `【分析師波波回報：因 Google AI 伺服器超時 ⏰ 無法為您產出詳細 analysis 報告，以下是為您查詢的即時股票數據】：\n${stockSummary}\n\n（您可以稍候再試一次以獲取完整報告喔！）`
     }
 
     if (status === 429) {

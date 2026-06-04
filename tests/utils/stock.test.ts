@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { getStockPrice, extractTickers, clearStockCache, searchStockTickerWithYahoo, fetchStockNameFromYahooPage } from '../../src/utils/stock'
+import { getStockPrice, extractTickers, clearStockCache, searchStockTickerWithYahoo, fetchStockNameFromYahooPage, lookupStockTicker, getTaiwanStockName, taiwanStockMap, getStockSlogan } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
 import axios from 'axios'
 
@@ -170,6 +170,47 @@ describe('Stock Utility Tests', () => {
 
       const result = await fetchStockNameFromYahooPage('2383.TW')
       expect(result).toBeNull()
+    })
+  })
+
+  describe('lookupStockTicker and getTaiwanStockName', () => {
+    beforeEach(() => {
+      taiwanStockMap['台積電'] = '2330.TW'
+      taiwanStockMap['台新新光金'] = '2887.TW'
+      taiwanStockMap['永豐金'] = '2890.TW'
+      taiwanStockMap['世界'] = '5347.TWO'
+      taiwanStockMap['國巨*'] = '2327.TW'
+      taiwanStockMap['美德醫療-DR'] = '9103.TW'
+    })
+
+    test('should resolve nicknames using NICKNAME_MAP and taiwanStockMap', async () => {
+      expect(await lookupStockTicker('GG')).toBe('2330.TW')
+      expect(await lookupStockTicker('西瓜')).toBe('2887.TW')
+      expect(await lookupStockTicker('老董')).toBe('2890.TW')
+      expect(await lookupStockTicker('世界先進')).toBe('5347.TWO')
+      expect(await lookupStockTicker('國巨')).toBe('2327.TW')
+    })
+
+    test('should reverse lookup Chinese names using getTaiwanStockName', () => {
+      expect(getTaiwanStockName('2330.TW')).toBe('台積電')
+      expect(getTaiwanStockName('2887.TW')).toBe('台新新光金')
+      expect(getTaiwanStockName('2890.TW')).toBe('永豐金')
+      expect(getTaiwanStockName('5347.TWO')).toBe('世界')
+      expect(getTaiwanStockName('2327.TW')).toBe('國巨*')
+    })
+  })
+
+  describe('getStockSlogan', () => {
+    test('should return correct slogans for matching stock names', () => {
+      expect(getStockSlogan('華邦電')).toBe('買入華邦電 觸碰高壓電')
+      expect(getStockSlogan('群創')).toBe('買入群創 身心受創')
+      expect(getStockSlogan('高端疫苗')).toBe('買入高端 等著被端')
+      expect(getStockSlogan('星宇航空')).toBe('買入星宇 人生無語')
+      expect(getStockSlogan('南亞科技')).toBe('買入南亞科 蛋蛋少一顆')
+    })
+
+    test('should return null for unmatched stock names', () => {
+      expect(getStockSlogan('台積電')).toBeNull()
     })
   })
 })

@@ -1,55 +1,14 @@
 import YahooFinance from 'yahoo-finance2'
 import axios from 'axios'
+import * as fs from 'fs'
+import * as path from 'path'
 
 const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey']
 })
 
 export const COMMON_STOCK_MAP: Record<string, string> = {
-  // 台股龍頭與熱門股
-  '台積電': '2330.TW',
-  '台積': '2330.TW',
-  '聯發科': '2454.TW',
-  '發哥': '2454.TW',
-  '鴻海': '2317.TW',
-  '公公': '2317.TW',
-  '廣達': '2382.TW',
-  '緯創': '3231.TW',
-  '技嘉': '2376.TW',
-  '微星': '2377.TW',
-  '元太': '8069.TWO',
-  '南亞科': '2408.TW',
-  '牙科': '2408.TW',
-  '華邦電': '2344.TW',
-  '華崩店': '2344.TW',
-  '創意': '3443.TW',
-  '世芯': '3661.TW',
-  '世芯-KY': '3661.TW',
-  '智原': '3035.TW',
-  '中鋼': '2002.TW',
-  '長榮': '2603.TW',
-  '陽明': '2609.TW',
-  '萬海': '2615.TW',
-  '欣興': '3037.TW',
-  '景碩': '3189.TW',
-  '南電': '8046.TW',
-  '奇鋐': '3017.TW',
-  '雙鴻': '3324.TW',
-  '聯電': '2303.TW',
-  '二哥': '2303.TW',
-
-  // 金融股
-  '國泰金': '2882.TW',
-  '富邦金': '2881.TW',
-  '中信金': '2891.TW',
-  '兆豐金': '2886.TW',
-  '玉山金': '2884.TW',
-  '台新金': '2887.TW',
-  '新光金': '2888.TW',
-  '西瓜金': '2888.TW',
-  '西瓜': '2888.TW',
-
-  // 熱門 ETF
+  // 熱門 ETF (以防證交所 JSON 更新或快取失效，作為快速查表)
   '0050': '0050.TW',
   '元大台灣50': '0050.TW',
   '0056': '0056.TW',
@@ -65,7 +24,7 @@ export const COMMON_STOCK_MAP: Record<string, string> = {
   '00981A': '00981A.TW',
   '00403A': '00403A.TW',
 
-  // 常見美股
+  // 常見美股與 ADR
   '蘋果': 'AAPL',
   'APPLE': 'AAPL',
   '微軟': 'MSFT',
@@ -84,7 +43,178 @@ export const COMMON_STOCK_MAP: Record<string, string> = {
   'MICRON': 'MU',
   '超微': 'AMD',
   '台積電ADR': 'TSM',
-  'TSM': 'TSM'
+  'TSM': 'TSM',
+  '海馬': 'HIMX',
+  '奇景': 'HIMX'
+}
+
+export const NICKNAME_MAP: Record<string, string> = {
+  // 台股龍頭與熱門股
+  'GG': '台積電',
+  '護國神山': '台積電',
+  '大哥': '台積電',
+  '台積': '台積電',
+
+  '小GG': '力積電',
+  '力晶': '力積電',
+  '天后': '力積電',
+  'ZG': '力積電',
+
+  '仙境RO': '世界',
+  'DIO': '世界',
+  '世界先進': '世界',
+
+  '二哥': '聯電',
+  '聯二哥': '聯電',
+  '大碩': '聯電',
+
+  '公公': '鴻海',
+  '海公公': '鴻海',
+  '海邊': '鴻海',
+
+  '羚羊': '凌陽',
+  '發哥': '聯發科',
+  '螃蟹': '瑞昱',
+
+  '阿姨的股': '宏達電',
+  '紅茶店': '宏達電',
+  'hㄒㄈ': '宏達電',
+
+  '戀人': '友達',
+  '包子': '群創',
+  '肉鬆': '廣達',
+
+  '小英': '英業達',
+  '英業金': '英業達',
+
+  '神教': '日月光投控',
+  '日月光': '日月光投控',
+
+  '皮卡': '和碩',
+  '麵包店': '欣興',
+  '客運': '欣興',
+  '石頭': '華碩',
+  '小石頭': '華擎',
+
+  'G心': '技嘉',
+  '雞排': '技嘉',
+  '小星星': '微星',
+  '黃色鬼屋': '燦坤',
+
+  '種花電': '中華電',
+  '中華電信': '中華電',
+
+  '滷肉': '聯詠',
+
+  '股王': '大立光',
+  '大力肛': '大立光',
+  '穩套': '穩懋',
+  '旺綠': '旺宏',
+  '寶寶': '仁寶',
+  '華崩電': '華邦電',
+  '華崩店': '華邦電',
+  '華二哥': '華新科',
+  '傢俱': '力麗',
+
+  '聯合往生': '聯合再生',
+  '往生': '聯合再生',
+
+  '金瓜': '聯茂',
+  '大茂': '聯茂',
+
+  '金項鍊': '金像電',
+
+  '沒的醫': '美德醫療-DR',
+  '沒得醫': '美德醫療-DR',
+  '美德醫DR': '美德醫療-DR',
+  '美德醫療DR': '美德醫療-DR',
+
+  '被動元件大哥': '國巨*',
+  '國巨': '國巨*',
+
+  '泰金寶DR': '泰金寶-DR',
+
+  '電鍋': '大同',
+  '小家電': '燦星網',
+  '牛肉麵': '三商',
+
+  '精神科': '精成科',
+
+  '同性戀': '同欣電',
+
+  '牙科': '南亞科',
+  '智崩': '智邦',
+
+  '機殼王': '可成',
+  '賣廠王': '可成',
+  '準哥': '鴻準',
+  '杏仁糕': '興能高',
+  '翼龍': '義隆',
+  '小明': '廣明',
+  '音浪': '力成',
+  '麵包機': '新麥',
+  '可愛教主': '成霖',
+  '寶咖咖': '櫻花建',
+  '寶佳': '櫻花建',
+
+  '綠巨人': '長榮',
+  '染髮劑': '美吾華',
+  '一生一世': '中石化',
+  '保齡球': '寶齡富錦',
+  '五金行': '振宇五金',
+
+  '軟板王': '嘉聯益',
+  '嘎聯益': '嘉聯益',
+
+  '小寶雅': '弘帆',
+  '鵬哥': '敬鵬',
+  '威力彩': '撼訊',
+  '台表哥': '台表科',
+  '威而鋼': '威剛',
+  '張寶成': '寶成',
+  '冷氣': '東元',
+  '雅妮': '亞泥',
+  '土地公': '正德',
+
+  '荔枝': '力致',
+  '奶雞': '力致',
+
+  '滑西瓜': '華星光',
+  '波波': '波若威',
+  '限制': '波若威',
+
+  '男子漢': '楠梓電',
+  '男子電': '楠梓電',
+  '大象': '鈊象',
+  '邰哥': '智原',
+  '高枝': '高技',
+  '高麗菜': '高力',
+  '阿達': '神達',
+  '竹子': '竹陞科技',
+  '負心漢': '新漢',
+  '大淫威': '大銀微系統',
+  '佩佩豬': '康霈',
+
+  // 金融類股
+  '西瓜金': '台新新光金',
+  '西瓜': '台新新光金',
+  '新光金': '台新新光金',
+  '紐約金': '兆豐金',
+  '馬家金': '元大金',
+  '榮家銀': '上海商銀',
+  '大樹金': '國泰金',
+  '何家金': '永豐金',
+  '一元金': '中信金',
+  '牡蠣金': '中信金',
+  '拉拉金': '華南金',
+  '拉拉熊金': '華南金',
+  '高山金': '玉山金',
+  '魚翅金': '富邦金',
+  '二元金': '富邦金',
+  '三商獸': '三商壽',
+  '三商人壽': '三商壽',
+  '老董': '永豐金',
+  '京城銀': '永豐金'
 }
 
 interface CacheEntry {
@@ -394,3 +524,226 @@ export function cleanStockNameForSearch(name: string): string {
     .replace(/(?:股份有限公司|有限公司|股份|公司|集團|科技|工業|控股|精密|資通|物聯網|模組|電腦|Co\.|Ltd\.|Inc\.)/g, '')
     .trim()
 }
+
+const STOCK_MAP_PATH = path.join(__dirname, '../../config/taiwan_stocks.json')
+export let taiwanStockMap: Record<string, string> = {}
+let isLoaded = false
+
+export async function initTaiwanStockMap() {
+  if (isLoaded) return
+
+  if (process.env.VITEST) {
+    isLoaded = true
+    return
+  }
+
+  try {
+    if (fs.existsSync(STOCK_MAP_PATH)) {
+      const data = fs.readFileSync(STOCK_MAP_PATH, 'utf-8')
+      taiwanStockMap = JSON.parse(data)
+      isLoaded = true
+      console.log(`[Stock Map] Loaded ${Object.keys(taiwanStockMap).length} symbols from cache.`)
+
+      const stats = fs.statSync(STOCK_MAP_PATH)
+      const ageMs = Date.now() - stats.mtimeMs
+      if (ageMs > 24 * 60 * 60 * 1000) {
+        console.log('[Stock Map] Cache is older than 24 hours. Updating in background...')
+        updateTaiwanStockMapInBackground()
+      }
+    } else {
+      console.log('[Stock Map] No cache found. Fetching stock map from TWSE...')
+      await updateTaiwanStockMap()
+    }
+  } catch (err: any) {
+    console.error('[Stock Map] Failed to initialize stock map:', err.message)
+    updateTaiwanStockMapInBackground()
+  }
+}
+
+async function updateTaiwanStockMapInBackground() {
+  try {
+    await updateTaiwanStockMap()
+  } catch (err: any) {
+    console.error('[Stock Map] Background update failed:', err.message)
+  }
+}
+
+export async function updateTaiwanStockMap() {
+  try {
+    const res2 = await axios.get('https://isin.twse.com.tw/isin/C_public.jsp?strMode=2', {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 10000
+    })
+    const html2 = new TextDecoder('big5').decode(res2.data)
+    const map2 = parseTWSEHtml(html2, '.TW')
+
+    const res4 = await axios.get('https://isin.twse.com.tw/isin/C_public.jsp?strMode=4', {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 10000
+    })
+    const html4 = new TextDecoder('big5').decode(res4.data)
+    const map4 = parseTWSEHtml(html4, '.TWO')
+
+    const res5 = await axios.get('https://isin.twse.com.tw/isin/C_public.jsp?strMode=5', {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 10000
+    })
+    const html5 = new TextDecoder('big5').decode(res5.data)
+    const map5 = parseTWSEHtml(html5, '.TWO')
+
+    taiwanStockMap = { ...map2, ...map4, ...map5 }
+    isLoaded = true
+
+    const dir = path.dirname(STOCK_MAP_PATH)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+    fs.writeFileSync(STOCK_MAP_PATH, JSON.stringify(taiwanStockMap))
+    console.log(`[Stock Map] Updated and saved ${Object.keys(taiwanStockMap).length} symbols.`)
+  } catch (err: any) {
+    throw new Error(`Failed to fetch TWSE/OTC stock lists: ${err.message}`)
+  }
+}
+
+function parseTWSEHtml(html: string, suffix: string): Record<string, string> {
+  const map: Record<string, string> = {}
+  const regex = /<td[^>]*>\s*(\d{4,6}[a-zA-Z]?)\s+([^<]+)<\/td>/gi
+  let match
+  while ((match = regex.exec(html)) !== null) {
+    const code = match[1].trim()
+    const name = match[2].trim()
+    const ticker = `${code}${suffix}`
+
+    map[name] = ticker
+    map[code] = ticker
+  }
+  return map
+}
+
+export function getTaiwanStockTicker(nameOrCode: string): string | null {
+  if (!isLoaded) {
+    try {
+      if (fs.existsSync(STOCK_MAP_PATH)) {
+        const data = fs.readFileSync(STOCK_MAP_PATH, 'utf-8')
+        taiwanStockMap = JSON.parse(data)
+        isLoaded = true
+      }
+    } catch {}
+  }
+  return taiwanStockMap[nameOrCode] || null
+}
+
+export async function lookupStockTicker(query: string): Promise<string | null> {
+  const normalized = query.trim()
+  if (!normalized) return null
+
+  const upperQuery = normalized.toUpperCase()
+
+  // Check NICKNAME_MAP first
+  let target = normalized
+  if (NICKNAME_MAP[normalized]) {
+    target = NICKNAME_MAP[normalized]
+  } else if (NICKNAME_MAP[upperQuery]) {
+    target = NICKNAME_MAP[upperQuery]
+  }
+
+  const upperTarget = target.toUpperCase()
+
+  // 1. Check COMMON_STOCK_MAP
+  if (COMMON_STOCK_MAP[target]) {
+    return COMMON_STOCK_MAP[target]
+  }
+  if (COMMON_STOCK_MAP[upperTarget]) {
+    return COMMON_STOCK_MAP[upperTarget]
+  }
+
+  // 2. Check crawled Taiwan stock list
+  await initTaiwanStockMap()
+  const twTicker = getTaiwanStockTicker(target)
+  if (twTicker) {
+    return twTicker
+  }
+  const twTickerUpper = getTaiwanStockTicker(upperTarget)
+  if (twTickerUpper) {
+    return twTickerUpper
+  }
+
+  // 3. Check if it's a direct US stock ticker (1-5 letters)
+  const isUsTicker = /^[A-Z]{1,5}$/.test(upperTarget)
+  if (isUsTicker) {
+    return upperTarget
+  }
+
+  // 4. Check if it's a direct TW/TWO ticker with suffix (e.g. 2330.TW, 8069.TWO)
+  const isDirectTwTicker = /^\d{4,6}\.(TW|TWO)$/i.test(target)
+  if (isDirectTwTicker) {
+    return upperTarget
+  }
+
+  return null
+}
+
+/**
+ * 根據股票代號反向查詢台灣股票的中文名稱
+ */
+export function getTaiwanStockName(symbol: string): string | null {
+  const upperSymbol = symbol.trim().toUpperCase()
+  const code = upperSymbol.split('.')[0]
+
+  if (!isLoaded) {
+    try {
+      if (fs.existsSync(STOCK_MAP_PATH)) {
+        const data = fs.readFileSync(STOCK_MAP_PATH, 'utf-8')
+        taiwanStockMap = JSON.parse(data)
+        isLoaded = true
+      }
+    } catch {}
+  }
+
+  for (const [key, val] of Object.entries(taiwanStockMap)) {
+    if (val.toUpperCase() === upperSymbol && key !== code) {
+      return key
+    }
+  }
+  return null
+}
+
+export const STOCK_SLOGANS: Array<{ keywords: string[]; slogan: string }> = [
+  { keywords: ['群創'], slogan: '買入群創 身心受創' },
+  { keywords: ['緯創'], slogan: '買入緯創 也是身心受創' },
+  { keywords: ['微星'], slogan: '買入微星 眼冒金星' },
+  { keywords: ['鴻海'], slogan: '買入鴻海 石沉大海' },
+  { keywords: ['友達'], slogan: '買入友達 人生阿達' },
+  { keywords: ['彩晶'], slogan: '買入彩晶 需要收驚' },
+  { keywords: ['高端'], slogan: '買入高端 等著被端' },
+  { keywords: ['技嘉'], slogan: '買入技嘉 回不了家' },
+  { keywords: ['緯穎'], slogan: '買入緯穎 看到鬼影' },
+  { keywords: ['陽明'], slogan: '買入陽明 不見光明' },
+  { keywords: ['長榮'], slogan: '買入長榮 無地自容' },
+  { keywords: ['萬海'], slogan: '加碼萬海 準備跳海' },
+  { keywords: ['星宇'], slogan: '買入星宇 人生無語' },
+  { keywords: ['金寶'], slogan: '買入金寶 要吃不飽' },
+  { keywords: ['華邦電'], slogan: '買入華邦電 觸碰高壓電' },
+  { keywords: ['士電'], slogan: '買入士電 人已觸電' },
+  { keywords: ['南亞科'], slogan: '買入南亞科 蛋蛋少一顆' }
+]
+
+export function getStockSlogan(name: string): string | null {
+  const cleanName = name.trim()
+  for (const entry of STOCK_SLOGANS) {
+    if (entry.keywords.some(k => cleanName.includes(k))) {
+      return entry.slogan
+    }
+  }
+  return null
+}
+
