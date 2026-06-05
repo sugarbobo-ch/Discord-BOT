@@ -113,6 +113,39 @@ const getMessageImageUrl = (msg: Message): string | null => {
   return null
 }
 
+/**
+ * 安全地回覆訊息，如果原始訊息被刪除，則退回直接發送至頻道，防止崩潰
+ */
+const safeReply = async (msg: Message, content: any): Promise<Message | null> => {
+  try {
+    return await msg.reply(content)
+  } catch (err: any) {
+    console.warn(`Failed to reply to message ${msg.id}, falling back to channel send:`, err.message)
+    try {
+      return await (msg.channel as any).send(content)
+    } catch (channelErr: any) {
+      console.error('Failed to send fallback channel message:', channelErr.message)
+      return null
+    }
+  }
+}
+
+/**
+ * 安全地編輯狀態訊息，如果狀態訊息或原始訊息失效/被刪，則改用 safeReply 發送新訊息
+ */
+const safeEdit = async (statusMsg: Message | null, originalMsg: Message, content: any): Promise<Message | null> => {
+  if (statusMsg) {
+    try {
+      return await statusMsg.edit(content)
+    } catch (err: any) {
+      console.warn(`Failed to edit status message ${statusMsg.id}, falling back to reply/send:`, err.message)
+      return await safeReply(originalMsg, content)
+    }
+  } else {
+    return await safeReply(originalMsg, content)
+  }
+}
+
 export class BoboCommand implements Command {
   public names = ['bobo']
 
@@ -142,7 +175,7 @@ export class BoboCommand implements Command {
           prompt = '請回覆此訊息。'
         }
       } else {
-        message.reply('叫波波幹嘛？後面要加上你想說的話或提供圖片啦！')
+        await safeReply(message, '叫波波幹嘛？後面要加上你想說的話或提供圖片啦！')
         return
       }
     }
@@ -493,9 +526,9 @@ export class BoboCommand implements Command {
         async statusText => {
           try {
             if (!statusMessage) {
-              statusMessage = await message.reply(statusText)
+              statusMessage = await safeReply(message, statusText)
             } else {
-              await statusMessage.edit(statusText)
+              statusMessage = await safeEdit(statusMessage, message, statusText)
             }
             // 編輯狀態訊息後重新觸發「正在輸入...」狀態，確保指示器在後續查詢中持續保有
             await (message.channel as any).sendTyping().catch((err: any) => {
@@ -511,9 +544,9 @@ export class BoboCommand implements Command {
       // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
       if (reply.length <= 2000) {
         if (statusMessage) {
-          await statusMessage.edit(reply)
+          await safeEdit(statusMessage, message, reply)
         } else {
-          await message.reply(reply)
+          await safeReply(message, reply)
         }
       } else {
         const CHUNK_SIZE = 1900
@@ -525,21 +558,32 @@ export class BoboCommand implements Command {
         if (chunks.length > 0) {
           let firstMsg: any
           if (statusMessage) {
-            firstMsg = await statusMessage.edit(chunks[0])
+            firstMsg = await safeEdit(statusMessage, message, chunks[0])
           } else {
-            firstMsg = await message.reply(chunks[0])
+            firstMsg = await safeReply(message, chunks[0])
           }
-          for (let i = 1; i < chunks.length; i++) {
-            await (firstMsg.channel as any).send(chunks[i])
+          if (firstMsg) {
+            for (let i = 1; i < chunks.length; i++) {
+              await (firstMsg.channel as any).send(chunks[i]).catch((err: any) => {
+                console.error(`Failed to send chunk ${i}:`, err.message)
+              })
+            }
           }
         }
       }
     } catch (error: any) {
       console.error('Error in BoboCommand:', error.message)
-      message.reply('波波出錯了，無法回應。')
+      await safeReply(message, '波波出錯了，無法回應。')
     } finally {
       if (typingInterval) {
         clearInterval(typingInterval)
+      }
+      // 強制結束 Discord 的正在輸入狀態 (透過發送並立即刪除隱形訊息)
+      try {
+        const dummy = await (message.channel as any).send({ content: '\u200B' })
+        await dummy.delete().catch(() => {})
+      } catch (err: any) {
+        // 忽略可能存在的發言權限或刪除權限錯誤
       }
     }
   }

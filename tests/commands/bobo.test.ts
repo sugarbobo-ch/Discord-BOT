@@ -180,4 +180,37 @@ describe('BoboCommand Reply Tests', () => {
     const promptArg = vi.mocked(chatWithBobo).mock.calls[0][0]
     expect(promptArg).toBe('這張圖片是什麼？請跟我聊聊。')
   })
+
+  test('should fallback to channel.send if message.reply throws an error during execution', async () => {
+    mockMessage.reply = vi.fn().mockRejectedValue(new Error('Unknown Message'))
+    mockMessage.channel.send = vi.fn().mockResolvedValue({ delete: vi.fn().mockResolvedValue(true) })
+
+    await boboCommand.execute(mockMessage, ['你好'])
+
+    expect(mockMessage.reply).toHaveBeenCalled()
+    expect(mockMessage.channel.send).toHaveBeenCalledWith('這是波波的回答')
+  })
+
+  test('should not crash if both message.reply and channel.send throw errors', async () => {
+    mockMessage.reply = vi.fn().mockRejectedValue(new Error('Unknown Message'))
+    mockMessage.channel.send = vi.fn().mockRejectedValue(new Error('Channel Send Failed'))
+
+    await expect(boboCommand.execute(mockMessage, ['你好'])).resolves.not.toThrow()
+  })
+
+  test('should clear typing interval and force stop typing by sending/deleting zero-width space', async () => {
+    const mockDelete = vi.fn().mockResolvedValue(true)
+    const mockSend = vi.fn().mockImplementation((options) => {
+      if (options && options.content === '\u200B') {
+        return Promise.resolve({ delete: mockDelete })
+      }
+      return Promise.resolve({ edit: vi.fn().mockResolvedValue(true) })
+    })
+    mockMessage.channel.send = mockSend
+
+    await boboCommand.execute(mockMessage, ['你好'])
+
+    expect(mockSend).toHaveBeenCalledWith({ content: '\u200B' })
+    expect(mockDelete).toHaveBeenCalled()
+  })
 })
