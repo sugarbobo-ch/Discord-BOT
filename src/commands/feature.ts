@@ -29,7 +29,8 @@ export class FeatureCommand implements Command {
             '• `!edit [指令] [內容]`：編輯自訂指令。\n' +
             '• `!remove [指令]`：移除自訂指令。\n' +
             '• `!list`：列出可用自訂指令。\n' +
-            '• `!大全 [關鍵字]`：查詢關鍵字自訂指令。'
+            '• `!大全 [關鍵字]`：查詢關鍵字自訂指令。\n' +
+            '• ⚠️ 自訂指令名稱不可為系統保留指令或關鍵字（如 `add`、`edit`、`bobo`、`stock` 等）。'
         },
         {
           name: '📋 記住功能 (Keep)',
@@ -63,7 +64,8 @@ export class FeatureCommand implements Command {
             '• `!搜圖`：以圖片網址、上傳圖片或回覆圖片進行搜圖（使用 Saucenao）。\n' +
             '• `!nhentai [車牌]` / `!神的語言 [車牌]` / `!god [車牌]`：產生 nhentai 本本連結。\n' +
             '• `#[6位數車牌]`：例如在聊天輸入 `#123456`，會自動搜尋並產生本本連結。\n' +
-            '• `!wnacg [車牌]`：在開車頻道產生 wnacg 連結。'
+            '• `!wnacg [車牌]`：在開車頻道產生 wnacg 連結。\n' +
+            '• **自動生成 R18 網站預覽卡**：貼出 E-hentai、Wnacg、Happymh、禁漫天堂 (18comic) 連結時，會自動生成附帶封面、作者、標籤與分類的精美 Embed 卡片！'
         },
         {
           name: '🔧 推特/X.com 自動置換與設定',

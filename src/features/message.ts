@@ -7,6 +7,8 @@ import { checkImageNSFW } from '../utils/gemini'
 import path from 'path'
 import fs from 'fs'
 
+import { commandRegistry } from '../utils/registry'
+
 export { checkPrefix, checkMentions, checkEmoji, getCommandName }
 
 const keywords = [
@@ -29,14 +31,17 @@ export const readCommandDict = async (): Promise<void> => {
   try {
     const db = getDb()
 
-    // 載入所有伺服器清單
-    const servers = db.prepare('SELECT server_id FROM servers').all() as any[]
-    serversList = servers.map(row => row.server_id)
-
     // 清空現有的快取
     for (const key in responseDict) {
       delete responseDict[key]
     }
+
+    // 載入所有伺服器清單
+    const servers = db.prepare('SELECT server_id FROM servers').all() as any[]
+    serversList = servers.map(row => {
+      responseDict[row.server_id] = {}
+      return row.server_id
+    })
 
     // 載入所有自訂指令
     const cmds = db.prepare('SELECT server_id, name, response FROM commands').all() as any[]
@@ -68,6 +73,8 @@ export const editCommand = async (message: Message, command?: string): Promise<v
     serversList.push(server)
     responseDict[server] = {}
     db.prepare('INSERT OR IGNORE INTO servers (server_id) VALUES (?)').run(server)
+  } else if (!responseDict[server]) {
+    responseDict[server] = {}
   }
 
   if (command === undefined || command === null) {
@@ -83,6 +90,10 @@ export const editCommand = async (message: Message, command?: string): Promise<v
           : commands[1].toLowerCase().trimStart()
       if (command.length === 0) {
         message.reply('格式錯誤，請確認空白位置和數量正確')
+        return
+      }
+      if (commandRegistry.get(command)) {
+        message.reply(`⛔ 格式錯誤，"${command}" 是系統保留指令或關鍵字，不可使用此名稱。`)
         return
       }
       if (command in responseDict[server]) {

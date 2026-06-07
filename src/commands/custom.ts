@@ -18,27 +18,22 @@ export class CustomCommand implements Command {
   ]
 
   public async execute(message: Message, args: string[]): Promise<void> {
-    const cmd = args[0]?.toLowerCase()
+    const commandName = messageCtrl.getCommandName(message)
+    const isCustomKeyword =
+      commandName === 'custom' && args[0] && this.names.includes(args[0].toLowerCase())
+    const action = isCustomKeyword ? args[0].toLowerCase() : commandName
 
-    const keywords = [
-      'add',
-      'remove',
-      'edit',
-      'list',
-      'help',
-      'addimg',
-      'delimg',
-      'send',
-      'reset',
-      '大全'
-    ]
+    const keywords = this.names.filter(name => name !== 'custom')
 
-    if (keywords.includes(cmd)) {
-      await messageCtrl.editCommand(message, cmd)
+    if (keywords.includes(action)) {
+      await messageCtrl.editCommand(message, action)
     } else {
-      messageCtrl.checkCommand(message, cmd)
-      await messageCtrl.getImageCommand(message, cmd)
-      await messageCtrl.getMediaCommand(message, cmd)
+      const customCmdName = commandName === 'custom' ? args[0]?.toLowerCase() : action
+      if (customCmdName) {
+        messageCtrl.checkCommand(message, customCmdName)
+        await messageCtrl.getImageCommand(message, customCmdName)
+        await messageCtrl.getMediaCommand(message, customCmdName)
+      }
     }
   }
 }
