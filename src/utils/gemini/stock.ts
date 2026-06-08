@@ -434,5 +434,19 @@ export function getNeutralLoadingStatus(): string {
   }
 
   const selected = statuses[Math.floor(Math.random() * statuses.length)]
-  return `${selected}，馬上為您處理，請稍後... ⚡`
+  const endings = [
+    '等我一下喔 ⚡',
+    '等等喔 ⚡',
+    '修但幾勒 ⚡',
+    '別急，我知道你很急但你先別急 ⚡',
+    'ちょっと待ってね ⚡',
+    '少々お待ちください ⚡',
+    '잠깐만요 ⚡',
+    '잠시만 기다려주세요 ⚡',
+    '波波努力處理中 ⚡',
+    '機器人處理中... ⚡',
+    '讓子彈飛一會兒 ⚡'
+  ]
+  const ending = endings[Math.floor(Math.random() * endings.length)]
+  return `${selected}，${ending}`
 }
