@@ -1,6 +1,6 @@
 import { Message, MessageType } from 'discord.js'
 import { Command } from './command.interface'
-import { chatWithBobo } from '../utils/gemini'
+import { chatWithBobo, getHybridContext, updateMemoryInBackground } from '../utils/gemini'
 import auth from '../../config/auth.json'
 import axios from 'axios'
 
@@ -291,20 +291,9 @@ export class BoboCommand implements Command {
 
       if (message.channel && message.channel.isTextBased()) {
         try {
-          const fetched = await (message.channel as any).messages.fetch({
-            limit,
-            before: message.id
-          })
-          const msgArray = Array.from(fetched.values()) as Message[] // [最新, ..., 最舊]
-          const historyMsgs = [...msgArray]
-
-          // 4. 確保回覆的訊息存在於 historyMsgs 之中 (若它比歷史前 50 筆更舊，就將其 append 於最後)
-          if (repliedMsg) {
-            const hasRepliedInHistory = historyMsgs.some(m => m.id === repliedMsg!.id)
-            if (!hasRepliedInHistory) {
-              historyMsgs.push(repliedMsg)
-            }
-          }
+          // 4. 取得混合式上下文 (包含最近的頻道訊息與顯式回覆鏈)
+          const hybridMsgs = await getHybridContext(message, limit, 5)
+          const historyMsgs = [...hybridMsgs].reverse() // 轉為 [最新, ..., 最舊] 以配合原先的處理順序與權重計算
 
           const k = historyMsgs.length
           if (k > 0) {
@@ -561,6 +550,22 @@ export class BoboCommand implements Command {
         },
         currentAuthorName
       )
+
+      // 5. 異步更新長期記憶
+      const repliedMsgPayload = repliedMsg ? {
+        author: repliedMsg.member?.displayName || repliedMsg.author.username,
+        content: repliedMsg.content || ''
+      } : undefined
+
+      updateMemoryInBackground(
+        message.author.id,
+        currentAuthorName,
+        prompt,
+        reply,
+        repliedMsgPayload
+      ).catch(err => {
+        console.error('[Memory Update Background Error]:', err)
+      })
 
       // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
       if (reply.length <= 2000) {

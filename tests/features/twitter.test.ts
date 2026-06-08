@@ -2,9 +2,13 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { checkAndFixTwitterEmbed } from '../../src/features/twitter'
 import { getTwitterSetting } from '../../src/utils/db'
 
-vi.mock('../../src/utils/db', () => ({
-  getTwitterSetting: vi.fn()
-}))
+vi.mock('../../src/utils/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/db')>()
+  return {
+    ...actual,
+    getTwitterSetting: vi.fn()
+  }
+})
 
 describe('Twitter Embed Fixer Feature Tests', () => {
   beforeEach(() => {

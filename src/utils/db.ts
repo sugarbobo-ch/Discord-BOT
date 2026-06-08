@@ -36,7 +36,21 @@ export function getDb(): any {
       detect_twitter INTEGER DEFAULT 1,
       FOREIGN KEY (server_id) REFERENCES servers(server_id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS user_memories (
+      user_id TEXT PRIMARY KEY,
+      profile TEXT DEFAULT '',
+      updated_at INTEGER,
+      memory_enabled INTEGER DEFAULT 1
+    );
   `)
+
+  // 執行 Schema 遷移 (如果欄位不存在則新增)
+  try {
+    dbConnection.exec('ALTER TABLE user_memories ADD COLUMN memory_enabled INTEGER DEFAULT 1;')
+  } catch (err) {
+    // 欄位已存在會丟出錯誤，可以直接忽略
+  }
 
   return dbConnection
 }
@@ -74,3 +88,70 @@ export function setTwitterSetting(serverId: string, enable: boolean): void {
     console.error('Error setting twitter setting:', error)
   }
 }
+
+/**
+ * 取得使用者的長期記憶 Profile
+ */
+export function getUserMemory(userId: string): string {
+  const db = getDb()
+  try {
+    const row = db
+      .prepare('SELECT profile FROM user_memories WHERE user_id = ?')
+      .get(userId) as { profile: string } | undefined
+    return row ? row.profile : ''
+  } catch (error) {
+    console.error('Error fetching user memory:', error)
+    return ''
+  }
+}
+
+/**
+ * 儲存/更新使用者的長期記憶 Profile
+ */
+export function setUserMemory(userId: string, profile: string): void {
+  const db = getDb()
+  const now = Math.floor(Date.now() / 1000)
+  try {
+    db.prepare(`
+      INSERT OR REPLACE INTO user_memories (user_id, profile, updated_at)
+      VALUES (?, ?, ?)
+    `).run(userId, profile, now)
+  } catch (error) {
+    console.error('Error setting user memory:', error)
+  }
+}
+
+/**
+ * 取得使用者的長期記憶功能開關設定 (預設為開啟: true)
+ */
+export function getUserMemorySetting(userId: string): boolean {
+  const db = getDb()
+  try {
+    const row = db
+      .prepare('SELECT memory_enabled FROM user_memories WHERE user_id = ?')
+      .get(userId) as { memory_enabled: number } | undefined
+    return row ? row.memory_enabled === 1 : true
+  } catch (error) {
+    console.error('Error fetching user memory setting:', error)
+    return true
+  }
+}
+
+/**
+ * 設定使用者的長期記憶功能開關
+ */
+export function setUserMemorySetting(userId: string, enable: boolean): void {
+  const db = getDb()
+  const val = enable ? 1 : 0
+  try {
+    db.prepare(`
+      INSERT INTO user_memories (user_id, memory_enabled)
+      VALUES (?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET memory_enabled = excluded.memory_enabled
+    `).run(userId, val)
+  } catch (error) {
+    console.error('Error setting user memory setting:', error)
+  }
+}
+
+

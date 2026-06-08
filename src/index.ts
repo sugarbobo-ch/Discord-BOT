@@ -23,10 +23,18 @@ import { BoboCommand } from './commands/bobo'
 import { SettingCommand } from './commands/setting'
 import { FeatureCommand } from './commands/feature'
 import { StockCommand } from './commands/stock'
+import { MemoryCommand } from './commands/memory'
 import { roastTypo } from './utils/gemini'
 import { checkAndFixTwitterEmbed } from './features/twitter'
 import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
-import { setTwitterSetting, getTwitterSetting } from './utils/db'
+import {
+  setTwitterSetting,
+  getTwitterSetting,
+  getUserMemory,
+  setUserMemory,
+  getUserMemorySetting,
+  setUserMemorySetting
+} from './utils/db'
 
 let count = 0
 
@@ -55,6 +63,8 @@ client.on('ready', async () => {
   commandRegistry.register(new SettingCommand())
   commandRegistry.register(new FeatureCommand())
   commandRegistry.register(new StockCommand())
+  commandRegistry.register(new MemoryCommand())
+
 
   // 註冊 Discord 斜線指令 (Slash Commands)
   try {
@@ -67,6 +77,49 @@ client.on('ready', async () => {
         {
           name: '功能',
           description: '介紹這機器人如何使用與其功能列表'
+        },
+        {
+          name: '記憶',
+          description: '長期記憶功能管理與查看',
+          options: [
+            {
+              name: '查看',
+              description: '查看波波對你記錄的長期記憶',
+              type: 1 // SUB_COMMAND
+            },
+            {
+              name: '清除',
+              description: '清除波波對你記錄的長期記憶',
+              type: 1 // SUB_COMMAND
+            },
+            {
+              name: '設定',
+              description: '手動設定波波對你的長期記憶',
+              type: 1, // SUB_COMMAND
+              options: [
+                {
+                  name: '內容',
+                  description: '記憶內容',
+                  type: 3, // STRING
+                  required: true
+                }
+              ]
+            },
+            {
+              name: '開啟',
+              description: '開啟波波對你的記憶功能',
+              type: 1 // SUB_COMMAND
+            },
+            {
+              name: '關閉',
+              description: '關閉波波對你的記憶功能',
+              type: 1 // SUB_COMMAND
+            }
+          ]
+        },
+        {
+          name: '我的記憶',
+          description: '快速查看波波對你記錄的長期記憶'
         }
       ]
 
@@ -286,6 +339,45 @@ client.on('interactionCreate', async interaction => {
           .setTimestamp()
 
         await interaction.reply({ embeds: [embed] })
+      } else if (commandName === '記憶') {
+        const subcommand = interaction.options.getSubcommand()
+        const userId = interaction.user.id
+        const username = (interaction.member as any)?.displayName || interaction.user.username
+
+        if (subcommand === '查看') {
+          const profile = getUserMemory(userId)
+          if (!profile) {
+            await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, ephemeral: true })
+          } else {
+            await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, ephemeral: true })
+          }
+        } else if (subcommand === '清除') {
+          setUserMemory(userId, '')
+          await interaction.reply({ content: `🧹 長期記憶已成功清除！`, ephemeral: true })
+        } else if (subcommand === '設定') {
+          const content = interaction.options.getString('內容')?.trim()
+          if (!content) {
+            await interaction.reply({ content: `❌ 請提供記憶內容。`, ephemeral: true })
+            return
+          }
+          setUserMemory(userId, content)
+          await interaction.reply({ content: `✍️ 長期記憶已設定為：\n${content}`, ephemeral: true })
+        } else if (subcommand === '開啟') {
+          setUserMemorySetting(userId, true)
+          await interaction.reply({ content: `🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`, ephemeral: true })
+        } else if (subcommand === '關閉') {
+          setUserMemorySetting(userId, false)
+          await interaction.reply({ content: `🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`, ephemeral: true })
+        }
+      } else if (commandName === '我的記憶') {
+        const userId = interaction.user.id
+        const username = (interaction.member as any)?.displayName || interaction.user.username
+        const profile = getUserMemory(userId)
+        if (!profile) {
+          await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, ephemeral: true })
+        } else {
+          await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, ephemeral: true })
+        }
       }
       return
     }

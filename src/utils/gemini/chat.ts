@@ -22,6 +22,8 @@ import {
   getProgressStatus,
   getStockPriceTool
 } from './stock'
+import { getUserMemory, getUserMemorySetting } from '../db'
+
 
 // Cooldown 限制 (毫秒)
 export const USER_CHAT_COOLDOWN = 5000 // !bobo 對話每人冷卻 5 秒
@@ -234,14 +236,21 @@ export const chatWithBobo = async (
     userDistinctionPrompt = `\n\n【使用者區分與歷史關聯規定】\n當前對你說話的使用者是「${authorName}」。請特別比對「對話脈絡」中每條訊息的『發送者』名稱。如果最新對話的發送者與先前話題的主導者是不同的人，請視為全新話題或不同人的個別詢問，不要強行將不同使用者的個股或話題關聯在一起（例如：不要用 A 使用者問的股票資料，去回答 B 使用者的問題；也不要對 B 使用者說「您剛才提到了某股票」）。`
   }
 
+  const isMemoryEnabled = getUserMemorySetting(userId)
+  const userLongTermMemory = isMemoryEnabled ? getUserMemory(userId) : ''
+  let memoryPrompt = ''
+  if (userLongTermMemory) {
+    memoryPrompt = `\n\n【關於當前說話者(${authorName || userId})的已知長期記憶與個性特徵】：\n${userLongTermMemory}\n請在對話中自然且適當地運用這些背景知識，但「不要」刻意、生硬地對使用者複述這些記憶條目。`
+  }
+
   let systemPrompt = ''
   if (stockContext) {
-    systemPrompt = ANALYST_SYSTEM_PROMPT + stockContext + userDistinctionPrompt
+    systemPrompt = ANALYST_SYSTEM_PROMPT + stockContext + memoryPrompt + userDistinctionPrompt
     console.log(
       `[AI Chat Path Check] Selected systemPrompt: ANALYST_SYSTEM_PROMPT (Stock context is active)`
     )
   } else {
-    systemPrompt = BOBO_SYSTEM_PROMPT + userDistinctionPrompt
+    systemPrompt = BOBO_SYSTEM_PROMPT + memoryPrompt + userDistinctionPrompt
     console.log(
       `[AI Chat Path Check] Selected systemPrompt: BOBO_SYSTEM_PROMPT (General chat is active)`
     )
@@ -457,7 +466,7 @@ export const chatWithBobo = async (
         .map((p: any, idx: number) => {
           if (idx === 0) {
             return {
-              text: ANALYST_SYSTEM_PROMPT + stockContext + userDistinctionPrompt
+              text: ANALYST_SYSTEM_PROMPT + stockContext + memoryPrompt + userDistinctionPrompt
             }
           }
           return p

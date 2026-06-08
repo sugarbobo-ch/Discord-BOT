@@ -1,11 +1,25 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { BoboCommand } from '../../src/commands/bobo'
-import { chatWithBobo } from '../../src/utils/gemini'
+import { chatWithBobo, getHybridContext, updateMemoryInBackground } from '../../src/utils/gemini'
 import axios from 'axios'
 
 vi.mock('axios')
 vi.mock('../../src/utils/gemini', () => ({
-  chatWithBobo: vi.fn().mockResolvedValue('這是波波的回答')
+  chatWithBobo: vi.fn().mockResolvedValue('這是波波的回答'),
+  getHybridContext: vi.fn().mockImplementation(async (message, limit) => {
+    const fetched = await message.channel.messages.fetch({ limit, before: message.id })
+    const msgArray = Array.from(fetched.values())
+    const historyMsgs = [...msgArray]
+    if (message.reference && message.reference.messageId) {
+      const replied = await message.channel.messages.fetch(message.reference.messageId)
+      const hasRepliedInHistory = historyMsgs.some(m => m.id === replied.id)
+      if (!hasRepliedInHistory) {
+        historyMsgs.push(replied)
+      }
+    }
+    return historyMsgs.reverse()
+  }),
+  updateMemoryInBackground: vi.fn().mockResolvedValue(undefined)
 }))
 
 describe('BoboCommand Reply Tests', () => {
@@ -18,6 +32,20 @@ describe('BoboCommand Reply Tests', () => {
     boboCommand = new BoboCommand()
 
     vi.mocked(chatWithBobo).mockResolvedValue('這是波波的回答')
+    vi.mocked(getHybridContext).mockImplementation(async (message, limit) => {
+      const fetched = await message.channel.messages.fetch({ limit, before: message.id })
+      const msgArray = Array.from(fetched.values())
+      const historyMsgs = [...msgArray]
+      if (message.reference && message.reference.messageId) {
+        const replied = await message.channel.messages.fetch(message.reference.messageId)
+        const hasRepliedInHistory = historyMsgs.some(m => m.id === replied.id)
+        if (!hasRepliedInHistory) {
+          historyMsgs.push(replied)
+        }
+      }
+      return historyMsgs.reverse()
+    })
+    vi.mocked(updateMemoryInBackground).mockResolvedValue(undefined)
 
     vi.mocked(axios.get).mockImplementation((url: any) => {
       const urlStr = typeof url === 'string' ? url : ''

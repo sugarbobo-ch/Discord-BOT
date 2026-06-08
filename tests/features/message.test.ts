@@ -144,6 +144,18 @@ describe('Message Feature Tests', () => {
         isNormalCommand: false,
         name: 'list'
       })
+      expect(isNormalCommand(mockMessage('!記憶'))).toEqual({
+        isNormalCommand: false,
+        name: '記憶'
+      })
+      expect(isNormalCommand(mockMessage('!memory'))).toEqual({
+        isNormalCommand: false,
+        name: 'memory'
+      })
+      expect(isNormalCommand(mockMessage('!我的記憶'))).toEqual({
+        isNormalCommand: false,
+        name: '我的記憶'
+      })
     })
   })
 

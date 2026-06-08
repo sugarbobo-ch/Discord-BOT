@@ -21,7 +21,10 @@ const keywords = [
   'delimg',
   'send',
   'reset',
-  '大全'
+  '大全',
+  '記憶',
+  'memory',
+  '我的記憶'
 ]
 
 const responseDict: Record<string, Record<string, string>> = {}
