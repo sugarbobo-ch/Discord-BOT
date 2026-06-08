@@ -186,9 +186,7 @@ describe('Message Feature Tests', () => {
       const editMsg = mockMessage('!edit edit_test edited_value', testServerId)
       await editCommand(editMsg, 'edit')
 
-      expect(editMsg.reply).toHaveBeenCalledWith(
-        expect.stringContaining('edit_test 指令已經更新')
-      )
+      expect(editMsg.reply).toHaveBeenCalledWith(expect.stringContaining('edit_test 指令已經更新'))
 
       await readCommandDict()
 
@@ -251,7 +249,11 @@ describe('Message Feature Tests', () => {
 
       expect(msg.reply).toHaveBeenCalledWith('正在下載並分析圖片安全性...')
       expect(msg.reply).toHaveBeenCalledWith('圖片新增成功')
-      expect(fileManager.downloadFile).toHaveBeenCalledWith('http://example.com/test.png', 'testcmd', expect.any(Function))
+      expect(fileManager.downloadFile).toHaveBeenCalledWith(
+        'http://example.com/test.png',
+        'testcmd',
+        expect.any(Function)
+      )
     })
 
     test('should reject NSFW image in !addimg on non-NSFW channel', async () => {
@@ -333,9 +335,7 @@ describe('Message Feature Tests', () => {
       const searchMsg = mockMessage('!大全 search_cmd', testServerId)
       await editCommand(searchMsg, '大全')
 
-      expect(searchMsg.channel.send).toHaveBeenCalledWith(
-        expect.stringContaining('search_cmd_1')
-      )
+      expect(searchMsg.channel.send).toHaveBeenCalledWith(expect.stringContaining('search_cmd_1'))
     })
   })
 

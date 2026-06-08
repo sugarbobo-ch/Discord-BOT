@@ -10,211 +10,211 @@ const yahooFinance = new YahooFinance({
 export const COMMON_STOCK_MAP: Record<string, string> = {
   // 熱門 ETF (以防證交所 JSON 更新或快取失效，作為快速查表)
   '0050': '0050.TW',
-  '元大台灣50': '0050.TW',
+  元大台灣50: '0050.TW',
   '0056': '0056.TW',
-  '元大高股息': '0056.TW',
+  元大高股息: '0056.TW',
   '00878': '00878.TW',
-  '國泰永續高股息': '00878.TW',
+  國泰永續高股息: '00878.TW',
   '00919': '00919.TW',
-  '群益台灣精選高股息': '00919.TW',
+  群益台灣精選高股息: '00919.TW',
   '00929': '00929.TW',
-  '復華台灣科技優息': '00929.TW',
+  復華台灣科技優息: '00929.TW',
   '00940': '00940.TW',
-  '元大台灣價值高息': '00940.TW',
+  元大台灣價值高息: '00940.TW',
   '00981A': '00981A.TW',
   '00403A': '00403A.TW',
 
   // 常見美股與 ADR
-  '蘋果': 'AAPL',
-  'APPLE': 'AAPL',
-  '微軟': 'MSFT',
-  'MICROSOFT': 'MSFT',
-  '輝達': 'NVDA',
-  'NVIDIA': 'NVDA',
-  '特斯拉': 'TSLA',
-  'TESLA': 'TSLA',
-  '亞馬遜': 'AMZN',
-  'AMAZON': 'AMZN',
-  '谷歌': 'GOOGL',
-  'GOOGLE': 'GOOGL',
-  '臉書': 'META',
-  'META': 'META',
-  '美光': 'MU',
-  'MICRON': 'MU',
-  '超微': 'AMD',
-  '台積電ADR': 'TSM',
-  'TSM': 'TSM',
-  '海馬': 'HIMX',
-  '奇景': 'HIMX'
+  蘋果: 'AAPL',
+  APPLE: 'AAPL',
+  微軟: 'MSFT',
+  MICROSOFT: 'MSFT',
+  輝達: 'NVDA',
+  NVIDIA: 'NVDA',
+  特斯拉: 'TSLA',
+  TESLA: 'TSLA',
+  亞馬遜: 'AMZN',
+  AMAZON: 'AMZN',
+  谷歌: 'GOOGL',
+  GOOGLE: 'GOOGL',
+  臉書: 'META',
+  META: 'META',
+  美光: 'MU',
+  MICRON: 'MU',
+  超微: 'AMD',
+  台積電ADR: 'TSM',
+  TSM: 'TSM',
+  海馬: 'HIMX',
+  奇景: 'HIMX'
 }
 
 export const NICKNAME_MAP: Record<string, string> = {
   // 台股龍頭與熱門股
-  'GG': '台積電',
-  '護國神山': '台積電',
-  '大哥': '台積電',
-  '台積': '台積電',
+  GG: '台積電',
+  護國神山: '台積電',
+  大哥: '台積電',
+  台積: '台積電',
 
-  '小GG': '力積電',
-  '力晶': '力積電',
-  '天后': '力積電',
-  'ZG': '力積電',
+  小GG: '力積電',
+  力晶: '力積電',
+  天后: '力積電',
+  ZG: '力積電',
 
-  '仙境RO': '世界',
-  'DIO': '世界',
-  '世界先進': '世界',
+  仙境RO: '世界',
+  DIO: '世界',
+  世界先進: '世界',
 
-  '二哥': '聯電',
-  '聯二哥': '聯電',
-  '大碩': '聯電',
+  二哥: '聯電',
+  聯二哥: '聯電',
+  大碩: '聯電',
 
-  '公公': '鴻海',
-  '海公公': '鴻海',
-  '海邊': '鴻海',
+  公公: '鴻海',
+  海公公: '鴻海',
+  海邊: '鴻海',
 
-  '羚羊': '凌陽',
-  '發哥': '聯發科',
-  '螃蟹': '瑞昱',
+  羚羊: '凌陽',
+  發哥: '聯發科',
+  螃蟹: '瑞昱',
 
-  '阿姨的股': '宏達電',
-  '紅茶店': '宏達電',
-  'hㄒㄈ': '宏達電',
+  阿姨的股: '宏達電',
+  紅茶店: '宏達電',
+  hㄒㄈ: '宏達電',
 
-  '戀人': '友達',
-  '包子': '群創',
-  '肉鬆': '廣達',
+  戀人: '友達',
+  包子: '群創',
+  肉鬆: '廣達',
 
-  '小英': '英業達',
-  '英業金': '英業達',
+  小英: '英業達',
+  英業金: '英業達',
 
-  '神教': '日月光投控',
-  '日月光': '日月光投控',
+  神教: '日月光投控',
+  日月光: '日月光投控',
 
-  '皮卡': '和碩',
-  '麵包店': '欣興',
-  '客運': '欣興',
-  '石頭': '華碩',
-  '小石頭': '華擎',
+  皮卡: '和碩',
+  麵包店: '欣興',
+  客運: '欣興',
+  石頭: '華碩',
+  小石頭: '華擎',
 
-  'G心': '技嘉',
-  '雞排': '技嘉',
-  '小星星': '微星',
-  '黃色鬼屋': '燦坤',
+  G心: '技嘉',
+  雞排: '技嘉',
+  小星星: '微星',
+  黃色鬼屋: '燦坤',
 
-  '種花電': '中華電',
-  '中華電信': '中華電',
+  種花電: '中華電',
+  中華電信: '中華電',
 
-  '滷肉': '聯詠',
+  滷肉: '聯詠',
 
-  '股王': '大立光',
-  '大力肛': '大立光',
-  '穩套': '穩懋',
-  '旺綠': '旺宏',
-  '寶寶': '仁寶',
-  '華崩電': '華邦電',
-  '華崩店': '華邦電',
-  '華二哥': '華新科',
-  '傢俱': '力麗',
+  股王: '大立光',
+  大力肛: '大立光',
+  穩套: '穩懋',
+  旺綠: '旺宏',
+  寶寶: '仁寶',
+  華崩電: '華邦電',
+  華崩店: '華邦電',
+  華二哥: '華新科',
+  傢俱: '力麗',
 
-  '聯合往生': '聯合再生',
-  '往生': '聯合再生',
+  聯合往生: '聯合再生',
+  往生: '聯合再生',
 
-  '金瓜': '聯茂',
-  '大茂': '聯茂',
+  金瓜: '聯茂',
+  大茂: '聯茂',
 
-  '金項鍊': '金像電',
+  金項鍊: '金像電',
 
-  '沒的醫': '美德醫療-DR',
-  '沒得醫': '美德醫療-DR',
-  '美德醫DR': '美德醫療-DR',
-  '美德醫療DR': '美德醫療-DR',
+  沒的醫: '美德醫療-DR',
+  沒得醫: '美德醫療-DR',
+  美德醫DR: '美德醫療-DR',
+  美德醫療DR: '美德醫療-DR',
 
-  '被動元件大哥': '國巨*',
-  '國巨': '國巨*',
+  被動元件大哥: '國巨*',
+  國巨: '國巨*',
 
-  '泰金寶DR': '泰金寶-DR',
+  泰金寶DR: '泰金寶-DR',
 
-  '電鍋': '大同',
-  '小家電': '燦星網',
-  '牛肉麵': '三商',
+  電鍋: '大同',
+  小家電: '燦星網',
+  牛肉麵: '三商',
 
-  '精神科': '精成科',
+  精神科: '精成科',
 
-  '同性戀': '同欣電',
+  同性戀: '同欣電',
 
-  '牙科': '南亞科',
-  '智崩': '智邦',
+  牙科: '南亞科',
+  智崩: '智邦',
 
-  '機殼王': '可成',
-  '賣廠王': '可成',
-  '準哥': '鴻準',
-  '杏仁糕': '興能高',
-  '翼龍': '義隆',
-  '小明': '廣明',
-  '音浪': '力成',
-  '麵包機': '新麥',
-  '可愛教主': '成霖',
-  '寶咖咖': '櫻花建',
-  '寶佳': '櫻花建',
+  機殼王: '可成',
+  賣廠王: '可成',
+  準哥: '鴻準',
+  杏仁糕: '興能高',
+  翼龍: '義隆',
+  小明: '廣明',
+  音浪: '力成',
+  麵包機: '新麥',
+  可愛教主: '成霖',
+  寶咖咖: '櫻花建',
+  寶佳: '櫻花建',
 
-  '綠巨人': '長榮',
-  '染髮劑': '美吾華',
-  '一生一世': '中石化',
-  '保齡球': '寶齡富錦',
-  '五金行': '振宇五金',
+  綠巨人: '長榮',
+  染髮劑: '美吾華',
+  一生一世: '中石化',
+  保齡球: '寶齡富錦',
+  五金行: '振宇五金',
 
-  '軟板王': '嘉聯益',
-  '嘎聯益': '嘉聯益',
+  軟板王: '嘉聯益',
+  嘎聯益: '嘉聯益',
 
-  '小寶雅': '弘帆',
-  '鵬哥': '敬鵬',
-  '威力彩': '撼訊',
-  '台表哥': '台表科',
-  '威而鋼': '威剛',
-  '張寶成': '寶成',
-  '冷氣': '東元',
-  '雅妮': '亞泥',
-  '土地公': '正德',
+  小寶雅: '弘帆',
+  鵬哥: '敬鵬',
+  威力彩: '撼訊',
+  台表哥: '台表科',
+  威而鋼: '威剛',
+  張寶成: '寶成',
+  冷氣: '東元',
+  雅妮: '亞泥',
+  土地公: '正德',
 
-  '荔枝': '力致',
-  '奶雞': '力致',
+  荔枝: '力致',
+  奶雞: '力致',
 
-  '滑西瓜': '華星光',
-  '波波': '波若威',
-  '限制': '波若威',
+  滑西瓜: '華星光',
+  波波: '波若威',
+  限制: '波若威',
 
-  '男子漢': '楠梓電',
-  '男子電': '楠梓電',
-  '大象': '鈊象',
-  '邰哥': '智原',
-  '高枝': '高技',
-  '高麗菜': '高力',
-  '阿達': '神達',
-  '竹子': '竹陞科技',
-  '負心漢': '新漢',
-  '大淫威': '大銀微系統',
-  '佩佩豬': '康霈',
+  男子漢: '楠梓電',
+  男子電: '楠梓電',
+  大象: '鈊象',
+  邰哥: '智原',
+  高枝: '高技',
+  高麗菜: '高力',
+  阿達: '神達',
+  竹子: '竹陞科技',
+  負心漢: '新漢',
+  大淫威: '大銀微系統',
+  佩佩豬: '康霈',
 
   // 金融類股
-  '西瓜金': '台新新光金',
-  '西瓜': '台新新光金',
-  '新光金': '台新新光金',
-  '紐約金': '兆豐金',
-  '馬家金': '元大金',
-  '榮家銀': '上海商銀',
-  '大樹金': '國泰金',
-  '何家金': '永豐金',
-  '一元金': '中信金',
-  '牡蠣金': '中信金',
-  '拉拉金': '華南金',
-  '拉拉熊金': '華南金',
-  '高山金': '玉山金',
-  '魚翅金': '富邦金',
-  '二元金': '富邦金',
-  '三商獸': '三商壽',
-  '三商人壽': '三商壽',
-  '老董': '永豐金',
-  '京城銀': '永豐金'
+  西瓜金: '台新新光金',
+  西瓜: '台新新光金',
+  新光金: '台新新光金',
+  紐約金: '兆豐金',
+  馬家金: '元大金',
+  榮家銀: '上海商銀',
+  大樹金: '國泰金',
+  何家金: '永豐金',
+  一元金: '中信金',
+  牡蠣金: '中信金',
+  拉拉金: '華南金',
+  拉拉熊金: '華南金',
+  高山金: '玉山金',
+  魚翅金: '富邦金',
+  二元金: '富邦金',
+  三商獸: '三商壽',
+  三商人壽: '三商壽',
+  老董: '永豐金',
+  京城銀: '永豐金'
 }
 
 interface CacheEntry {
@@ -236,7 +236,8 @@ async function getTwseCookie(): Promise<string> {
   try {
     const sessionResponse = await axios.get('https://mis.twse.com.tw/stock/', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 5000
     })
@@ -263,9 +264,10 @@ async function fetchFromTWSE(ticker: string): Promise<Record<string, any> | null
     const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex_ch}&json=1&delay=0&_=${Date.now()}`
     const response = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Cookie': cookieHeader,
-        'Referer': 'https://mis.twse.com.tw/stock/'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Cookie: cookieHeader,
+        Referer: 'https://mis.twse.com.tw/stock/'
       },
       timeout: 5000
     })
@@ -302,7 +304,8 @@ async function fetchFromYahooTWScraper(ticker: string): Promise<Record<string, a
   try {
     const response = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 5000
     })
@@ -325,13 +328,26 @@ async function fetchFromYahooTWScraper(ticker: string): Promise<Record<string, a
           price: parseFloat(quote.price.raw),
           currency: quote.currency || 'TWD',
           name: quote.symbolName || null,
-          change: quote.change && quote.change.raw !== undefined ? parseFloat(quote.change.raw) : null,
+          change:
+            quote.change && quote.change.raw !== undefined ? parseFloat(quote.change.raw) : null,
           changePercent: changePercent,
-          dayLow: quote.regularMarketDayLow && quote.regularMarketDayLow.raw !== undefined ? parseFloat(quote.regularMarketDayLow.raw) : null,
-          dayHigh: quote.regularMarketDayHigh && quote.regularMarketDayHigh.raw !== undefined ? parseFloat(quote.regularMarketDayHigh.raw) : null,
+          dayLow:
+            quote.regularMarketDayLow && quote.regularMarketDayLow.raw !== undefined
+              ? parseFloat(quote.regularMarketDayLow.raw)
+              : null,
+          dayHigh:
+            quote.regularMarketDayHigh && quote.regularMarketDayHigh.raw !== undefined
+              ? parseFloat(quote.regularMarketDayHigh.raw)
+              : null,
           volume: quote.volume ? parseInt(quote.volume, 10) : 0,
-          previousClose: quote.regularMarketPreviousClose && quote.regularMarketPreviousClose.raw !== undefined ? parseFloat(quote.regularMarketPreviousClose.raw) : null,
-          open: quote.regularMarketOpen && quote.regularMarketOpen.raw !== undefined ? parseFloat(quote.regularMarketOpen.raw) : null
+          previousClose:
+            quote.regularMarketPreviousClose && quote.regularMarketPreviousClose.raw !== undefined
+              ? parseFloat(quote.regularMarketPreviousClose.raw)
+              : null,
+          open:
+            quote.regularMarketOpen && quote.regularMarketOpen.raw !== undefined
+              ? parseFloat(quote.regularMarketOpen.raw)
+              : null
         }
       }
     }
@@ -402,7 +418,10 @@ export async function getStockPrice(tickerSymbol: string): Promise<Record<string
           quote = await yahooFinance.quote(testTicker)
           actualTicker = testTicker
         } catch (twoErr: any) {
-          console.error(`[Stock API Error] Failed to fetch ${actualTicker} with both .TW and .TWO:`, twoErr.message)
+          console.error(
+            `[Stock API Error] Failed to fetch ${actualTicker} with both .TW and .TWO:`,
+            twoErr.message
+          )
           actualTicker = `${actualTicker}.TW`
         }
       }
@@ -600,12 +619,15 @@ export function clearStockCache(): void {
 /**
  * 使用 Yahoo Finance 聯想搜尋 API 搜尋股票代碼與中文名稱
  */
-export async function searchStockTickerWithYahoo(query: string): Promise<{ symbol: string; name: string } | null> {
+export async function searchStockTickerWithYahoo(
+  query: string
+): Promise<{ symbol: string; name: string } | null> {
   const url = `https://tw.stock.yahoo.com/stock_ms/_td-stock/api/resource/AutocompleteService;query=${encodeURIComponent(query)}`
   try {
     const response = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 5000
     })
@@ -630,7 +652,8 @@ export async function searchStockTickerWithYahoo(query: string): Promise<{ symbo
  * 從 Yahoo 股市網頁擷取股票/公司的中文名稱（或英文名稱）
  */
 export async function fetchStockNameFromYahooPage(symbol: string): Promise<string | null> {
-  const isTaiwanStock = symbol.toUpperCase().endsWith('.TW') || symbol.toUpperCase().endsWith('.TWO')
+  const isTaiwanStock =
+    symbol.toUpperCase().endsWith('.TW') || symbol.toUpperCase().endsWith('.TWO')
   const url = isTaiwanStock
     ? `https://tw.stock.yahoo.com/quote/${symbol}`
     : `https://finance.yahoo.com/quote/${symbol}`
@@ -638,7 +661,8 @@ export async function fetchStockNameFromYahooPage(symbol: string): Promise<strin
   try {
     const res = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 5000
     })
@@ -652,7 +676,10 @@ export async function fetchStockNameFromYahooPage(symbol: string): Promise<strin
       }
     }
   } catch (error: any) {
-    console.error(`[fetchStockNameFromYahooPage Error] Failed to fetch name from page for ${symbol}:`, error.message)
+    console.error(
+      `[fetchStockNameFromYahooPage Error] Failed to fetch name from page for ${symbol}:`,
+      error.message
+    )
   }
   return null
 }
@@ -662,7 +689,10 @@ export async function fetchStockNameFromYahooPage(symbol: string): Promise<strin
  */
 export function cleanStockNameForSearch(name: string): string {
   return name
-    .replace(/(?:股份有限公司|有限公司|股份|公司|集團|科技|工業|控股|精密|資通|物聯網|模組|電腦|Co\.|Ltd\.|Inc\.)/g, '')
+    .replace(
+      /(?:股份有限公司|有限公司|股份|公司|集團|科技|工業|控股|精密|資通|物聯網|模組|電腦|Co\.|Ltd\.|Inc\.)/g,
+      ''
+    )
     .trim()
 }
 
@@ -714,7 +744,8 @@ export async function updateTaiwanStockMap() {
     const res2 = await axios.get('https://isin.twse.com.tw/isin/C_public.jsp?strMode=2', {
       responseType: 'arraybuffer',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 10000
     })
@@ -724,7 +755,8 @@ export async function updateTaiwanStockMap() {
     const res4 = await axios.get('https://isin.twse.com.tw/isin/C_public.jsp?strMode=4', {
       responseType: 'arraybuffer',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 10000
     })
@@ -734,7 +766,8 @@ export async function updateTaiwanStockMap() {
     const res5 = await axios.get('https://isin.twse.com.tw/isin/C_public.jsp?strMode=5', {
       responseType: 'arraybuffer',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 10000
     })
@@ -892,10 +925,10 @@ export function getStockSlogan(name: string): string | null {
  * 獲取股票歷史 K 線圖所需的數據
  */
 export async function getStockChartData(ticker: string, days = 40): Promise<any[]> {
-  const now = new Date();
-  const startDate = new Date();
-  startDate.setDate(now.getDate() - days);
-  const startDateStr = startDate.toISOString().split('T')[0];
+  const now = new Date()
+  const startDate = new Date()
+  startDate.setDate(now.getDate() - days)
+  const startDateStr = startDate.toISOString().split('T')[0]
 
   let actualTicker = ticker.trim().toUpperCase()
   if (COMMON_STOCK_MAP[actualTicker]) {
@@ -917,21 +950,33 @@ export async function getStockChartData(ticker: string, days = 40): Promise<any[
     let result: any = null
     if (!isTaiwanStock && twStockRegex.test(actualTicker)) {
       try {
-        result = await yahooFinance.chart(`${actualTicker}.TW`, { period1: startDateStr, interval: '1d' })
+        result = await yahooFinance.chart(`${actualTicker}.TW`, {
+          period1: startDateStr,
+          interval: '1d'
+        })
       } catch {
         try {
-          result = await yahooFinance.chart(`${actualTicker}.TWO`, { period1: startDateStr, interval: '1d' })
+          result = await yahooFinance.chart(`${actualTicker}.TWO`, {
+            period1: startDateStr,
+            interval: '1d'
+          })
         } catch {
-          result = await yahooFinance.chart(`${actualTicker}.TW`, { period1: startDateStr, interval: '1d' })
+          result = await yahooFinance.chart(`${actualTicker}.TW`, {
+            period1: startDateStr,
+            interval: '1d'
+          })
         }
       }
     } else {
       result = await yahooFinance.chart(actualTicker, { period1: startDateStr, interval: '1d' })
     }
-    return result?.quotes || [];
+    return result?.quotes || []
   } catch (error: any) {
-    console.error(`[getStockChartData Error] Failed to fetch chart for ${actualTicker}:`, error.message);
-    return [];
+    console.error(
+      `[getStockChartData Error] Failed to fetch chart for ${actualTicker}:`,
+      error.message
+    )
+    return []
   }
 }
 
@@ -970,10 +1015,9 @@ export async function fetchFullYahooQuote(ticker: string): Promise<any> {
     } else {
       quote = await yahooFinance.quote(actualTicker)
     }
-    return quote;
+    return quote
   } catch (error: any) {
-    console.error(`[fetchFullYahooQuote Error] Failed for ${actualTicker}:`, error.message);
-    return null;
+    console.error(`[fetchFullYahooQuote Error] Failed for ${actualTicker}:`, error.message)
+    return null
   }
 }
-

@@ -92,9 +92,10 @@ export const getApiKey = (): string => {
   const available = keys.find(k => k.cooldownUntil <= now)
   if (available) return available.key
   // Fallback to the one with the earliest cooldown expiry
-  return keys.reduce((earliest, current) =>
-    current.cooldownUntil < earliest.cooldownUntil ? current : earliest
-  , keys[0]).key
+  return keys.reduce(
+    (earliest, current) => (current.cooldownUntil < earliest.cooldownUntil ? current : earliest),
+    keys[0]
+  ).key
 }
 
 let aiInstance: GoogleGenAI | null = null
@@ -115,9 +116,7 @@ export const getAiClient = (apiKey?: string): GoogleGenAI => {
 /**
  * Executes a Gemini API function with key rotation and retries when rate limits or quotas are hit.
  */
-export const executeGenAI = async <T>(
-  fn: (ai: GoogleGenAI) => Promise<T>
-): Promise<T> => {
+export const executeGenAI = async <T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> => {
   const keys = getApiKeys()
   if (keys.length === 0) {
     throw new Error('Gemini API key is not configured.')
@@ -143,9 +142,11 @@ export const executeGenAI = async <T>(
       // 2. Otherwise, the one with the earliest cooldown expiration.
       let selectedKeyInfo = availableKeys.find(k => k.cooldownUntil <= now)
       if (!selectedKeyInfo) {
-        selectedKeyInfo = availableKeys.reduce((earliest, current) =>
-          current.cooldownUntil < earliest.cooldownUntil ? current : earliest
-        , availableKeys[0])
+        selectedKeyInfo = availableKeys.reduce(
+          (earliest, current) =>
+            current.cooldownUntil < earliest.cooldownUntil ? current : earliest,
+          availableKeys[0]
+        )
       }
 
       const key = selectedKeyInfo.key
@@ -176,14 +177,20 @@ export const executeGenAI = async <T>(
           errorMessage.toLowerCase().includes('internal error')
 
         if (isQuotaOrRateLimit) {
-          console.warn(`[Gemini API Key Rate Limited] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+          console.warn(
+            `[Gemini API Key Rate Limited] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`
+          )
           selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
           hasTransientOrRateLimitError = true
         } else if (status === 403 || status === 401) {
-          console.warn(`[Gemini API Key Auth/Permission Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+          console.warn(
+            `[Gemini API Key Auth/Permission Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`
+          )
           selectedKeyInfo.cooldownUntil = Date.now() + 5 * 60 * 1000 // 5 minutes cooldown
         } else if (isTransientError) {
-          console.warn(`[Gemini API Key Transient Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`)
+          console.warn(
+            `[Gemini API Key Transient Error] Key ending in ...${key.slice(-6)} failed. Switching key. Error: ${errorMessage}`
+          )
           selectedKeyInfo.cooldownUntil = Date.now() + 2 * 60 * 1000 // 2 minutes cooldown
           hasTransientOrRateLimitError = true
         } else {
@@ -194,7 +201,9 @@ export const executeGenAI = async <T>(
 
     if (hasTransientOrRateLimitError && retryAttempt < maxRetries) {
       const delay = baseDelayMs * Math.pow(2, retryAttempt)
-      console.warn(`[Gemini API executeGenAI] All keys failed with retryable errors. Retrying (attempt ${retryAttempt + 1}/${maxRetries}) after ${delay}ms...`)
+      console.warn(
+        `[Gemini API executeGenAI] All keys failed with retryable errors. Retrying (attempt ${retryAttempt + 1}/${maxRetries}) after ${delay}ms...`
+      )
       await new Promise(resolve => setTimeout(resolve, delay))
     } else {
       break

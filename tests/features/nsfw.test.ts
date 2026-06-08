@@ -91,9 +91,7 @@ describe('NSFW Feature Tests', () => {
       expect(statusMsgMock.edit).toHaveBeenCalledWith(
         expect.objectContaining({
           content: '搜尋完成！',
-          embeds: expect.arrayContaining([
-            expect.any(EmbedBuilder)
-          ])
+          embeds: expect.arrayContaining([expect.any(EmbedBuilder)])
         })
       )
 
@@ -104,11 +102,30 @@ describe('NSFW Feature Tests', () => {
 
       expect(data.title).toBe('Test Artwork Title')
       expect(data.url).toContain('https://saucenao.com/search.php?db=999&url=')
-      expect(data.fields).toContainEqual(expect.objectContaining({ name: '相似度', value: '95.4%' }))
-      expect(data.fields).toContainEqual(expect.objectContaining({ name: '作者 (Creator)', value: '[nihn](https://www.pixiv.net/users/12345)' }))
-      expect(data.fields).toContainEqual(expect.objectContaining({ name: '來源 (Source)', value: '[點我前往](https://www.pixiv.net/artworks/118304954)' }))
-      expect(data.fields).toContainEqual(expect.objectContaining({ name: '原作 (Material)', value: 'blue archive' }))
-      expect(data.fields).toContainEqual(expect.objectContaining({ name: '角色 (Characters)', value: 'arona (blue archive), plana (blue archive)' }))
+      expect(data.fields).toContainEqual(
+        expect.objectContaining({ name: '相似度', value: '95.4%' })
+      )
+      expect(data.fields).toContainEqual(
+        expect.objectContaining({
+          name: '作者 (Creator)',
+          value: '[nihn](https://www.pixiv.net/users/12345)'
+        })
+      )
+      expect(data.fields).toContainEqual(
+        expect.objectContaining({
+          name: '來源 (Source)',
+          value: '[點我前往](https://www.pixiv.net/artworks/118304954)'
+        })
+      )
+      expect(data.fields).toContainEqual(
+        expect.objectContaining({ name: '原作 (Material)', value: 'blue archive' })
+      )
+      expect(data.fields).toContainEqual(
+        expect.objectContaining({
+          name: '角色 (Characters)',
+          value: 'arona (blue archive), plana (blue archive)'
+        })
+      )
     })
 
     test('should download and upload image to Saucenao, then send the temp search URL if no match results parsed', async () => {
@@ -151,10 +168,14 @@ describe('NSFW Feature Tests', () => {
         timeout: 10000
       })
 
-      expect(axios.post).toHaveBeenCalledWith('https://saucenao.com/search.php', expect.any(FormData), {
-        headers: expect.any(Object),
-        timeout: 15000
-      })
+      expect(axios.post).toHaveBeenCalledWith(
+        'https://saucenao.com/search.php',
+        expect.any(FormData),
+        {
+          headers: expect.any(Object),
+          timeout: 15000
+        }
+      )
 
       expect(statusMsgMock.edit).toHaveBeenCalledWith(
         'https://saucenao.com/search.php?db=999&url=https%3A%2F%2Fsaucenao.com%2Fuserdata%2Ftmp%2FtestImg123.jpg'
@@ -193,6 +214,65 @@ describe('NSFW Feature Tests', () => {
 
       expect(statusMsgMock.edit).toHaveBeenCalledWith(
         'https://saucenao.com/search.php?db=999&url=http%3A%2F%2Fexample.com%2Fimage.jpg%3Ffoo%3Dbar%26baz%3Dqux'
+      )
+    })
+
+    test('should extract image from replied message attachments if the command has no URL and is a reply', async () => {
+      const mockChannel = {
+        isTextBased: vi.fn().mockReturnValue(true),
+        send: vi.fn(),
+        messages: {
+          fetch: vi.fn()
+        }
+      }
+      const mockMsg = {
+        content: '!搜圖',
+        author: { bot: false, id: '123' },
+        channel: mockChannel,
+        attachments: {
+          find: vi.fn().mockReturnValue(null)
+        },
+        reference: {
+          messageId: 'replied_msg_id'
+        }
+      } as any
+
+      const mockRepliedMsg = {
+        content: '',
+        attachments: {
+          find: vi.fn().mockReturnValue({
+            url: 'http://example.com/replied-image.jpg',
+            contentType: 'image/jpeg'
+          })
+        }
+      } as any
+
+      mockChannel.messages.fetch.mockResolvedValueOnce(mockRepliedMsg)
+
+      // Mock axios.get success for downloaded replied image
+      vi.mocked(axios.get).mockResolvedValueOnce({
+        data: Buffer.from('mock data'),
+        headers: { 'content-type': 'image/jpeg' }
+      })
+
+      // Mock axios.post upload failure to test the fallback URL containing our resolved image URL
+      vi.mocked(axios.post).mockRejectedValueOnce(new Error('Network Error'))
+
+      const statusMsgMock = {
+        edit: vi.fn().mockResolvedValue({})
+      }
+      mockChannel.send.mockResolvedValueOnce(statusMsgMock)
+
+      await getSourceURL(mockMsg)
+
+      expect(mockChannel.messages.fetch).toHaveBeenCalledWith('replied_msg_id')
+      expect(mockRepliedMsg.attachments.find).toHaveBeenCalled()
+      expect(axios.get).toHaveBeenCalledWith('http://example.com/replied-image.jpg', {
+        responseType: 'arraybuffer',
+        timeout: 10000
+      })
+      expect(statusMsgMock.edit).toHaveBeenCalledWith(
+        'https://saucenao.com/search.php?db=999&url=http%3A%2F%2Fexample.com%2Freplied-image.jpg'
       )
     })
   })

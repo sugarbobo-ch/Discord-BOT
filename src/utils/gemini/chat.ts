@@ -1,5 +1,13 @@
 import { ThinkingLevel } from '@google/genai'
-import { executeGenAI, getApiKey, getResponseText, MODEL_NAME, hasPromptInjection, logAIRequest, logAIResponse } from './core'
+import {
+  executeGenAI,
+  getApiKey,
+  getResponseText,
+  MODEL_NAME,
+  hasPromptInjection,
+  logAIRequest,
+  logAIResponse
+} from './core'
 import {
   getStockPrice,
   cleanStockNameForSearch,
@@ -77,7 +85,9 @@ export const chatWithBobo = async (
   onStatusUpdate?: (statusText: string) => Promise<void>,
   authorName?: string
 ): Promise<string> => {
-  console.log(`[AI Chat Triggered] User: ${authorName || userId} (${userId}) | Prompt: "${prompt.replace(/\n/g, ' ')}"${image ? ' [With Image]' : ''}`)
+  console.log(
+    `[AI Chat Triggered] User: ${authorName || userId} (${userId}) | Prompt: "${prompt.replace(/\n/g, ' ')}"${image ? ' [With Image]' : ''}`
+  )
 
   const apiKey = getApiKey()
   if (!apiKey) {
@@ -96,7 +106,9 @@ export const chatWithBobo = async (
 
   // 2. Prompt Injection 靜態防禦
   if (hasPromptInjection(prompt)) {
-    console.log(`[AI Chat Blocked - Prompt Injection] User: ${authorName || userId} (${userId}) | Prompt: "${prompt}"`)
+    console.log(
+      `[AI Chat Blocked - Prompt Injection] User: ${authorName || userId} (${userId}) | Prompt: "${prompt}"`
+    )
     return '想套我的話喔？這商業機密啦，不能告訴你。'
   }
 
@@ -110,13 +122,17 @@ export const chatWithBobo = async (
   const lastFetchedStockResults: any[] = []
 
   const isStockQuery = isPotentialStockQuery(prompt)
-  console.log(`[AI Chat Path Check] Prompt: "${prompt}" | isPotentialStockQuery result: ${isStockQuery}`)
+  console.log(
+    `[AI Chat Path Check] Prompt: "${prompt}" | isPotentialStockQuery result: ${isStockQuery}`
+  )
 
   if (isStockQuery) {
     try {
       console.log(`[AI Chat Path Check] Entering stock query path. Calling detectStocksWithAI...`)
       const analysis = await detectStocksWithAI(prompt, apiKey)
-      console.log(`[AI Chat Path Check] detectStocksWithAI returned: isMentioningStock = ${analysis.isMentioningStock}, stocks = ${JSON.stringify(analysis.stocks)}`)
+      console.log(
+        `[AI Chat Path Check] detectStocksWithAI returned: isMentioningStock = ${analysis.isMentioningStock}, stocks = ${JSON.stringify(analysis.stocks)}`
+      )
 
       if (analysis.isMentioningStock && analysis.stocks.length > 0) {
         if (onStatusUpdate) {
@@ -147,7 +163,8 @@ export const chatWithBobo = async (
           }
 
           // 3. 若皆失敗，最後才使用 AI 產生的 guessed ticker 作為備用
-          const normalizedTicker = resolvedTicker || (stock.ticker ? stock.ticker.trim().toUpperCase() : null)
+          const normalizedTicker =
+            resolvedTicker || (stock.ticker ? stock.ticker.trim().toUpperCase() : null)
 
           if (normalizedTicker) {
             tickers.push(normalizedTicker)
@@ -158,10 +175,12 @@ export const chatWithBobo = async (
         if (tickers.length > 0) {
           if (onStatusUpdate) {
             const stockNames = analysis.stocks.map(s => s.name).join(', ')
-            await onStatusUpdate(`⚡ 正在透過 Yahoo 財經 API 獲取 **${stockNames}** 的最新行情與財務數據... 💸`)
+            await onStatusUpdate(
+              `⚡ 正在透過 Yahoo 財經 API 獲取 **${stockNames}** 的最新行情與財務數據... 💸`
+            )
           }
           const stockResults = await Promise.all(
-            tickers.map(async (ticker) => {
+            tickers.map(async ticker => {
               const res = await getStockPrice(ticker)
               return { originalTicker: ticker, res }
             })
@@ -194,7 +213,12 @@ export const chatWithBobo = async (
 
           if (stockInfoStrings.length > 0) {
             if (onStatusUpdate) {
-              await onStatusUpdate(getProgressStatus('📈 正在為您撰寫專業的產業體質與股價趨勢分析... ✍️', lastFetchedStockResults))
+              await onStatusUpdate(
+                getProgressStatus(
+                  '📈 正在為您撰寫專業的產業體質與股價趨勢分析... ✍️',
+                  lastFetchedStockResults
+                )
+              )
             }
             stockContext = `\n\n【系統資訊 - 當前真實股票數據對照表】\n${stockInfoStrings.join('\n')}\n請「必須且只能」依據上述對照表中提供的真實數據回答使用者的股價與相關詢問。請特別注意：不同的股票代號對應不同的公司/名稱，請勿將 A 公司的股價、漲跌或財務數據誤植給 B 公司，也不要使用資料庫內過時的股價。若資料顯示查詢失敗，請誠實告知使用者查無資料。`
           }
@@ -213,10 +237,14 @@ export const chatWithBobo = async (
   let systemPrompt = ''
   if (stockContext) {
     systemPrompt = ANALYST_SYSTEM_PROMPT + stockContext + userDistinctionPrompt
-    console.log(`[AI Chat Path Check] Selected systemPrompt: ANALYST_SYSTEM_PROMPT (Stock context is active)`)
+    console.log(
+      `[AI Chat Path Check] Selected systemPrompt: ANALYST_SYSTEM_PROMPT (Stock context is active)`
+    )
   } else {
     systemPrompt = BOBO_SYSTEM_PROMPT + userDistinctionPrompt
-    console.log(`[AI Chat Path Check] Selected systemPrompt: BOBO_SYSTEM_PROMPT (General chat is active)`)
+    console.log(
+      `[AI Chat Path Check] Selected systemPrompt: BOBO_SYSTEM_PROMPT (General chat is active)`
+    )
   }
 
   try {
@@ -303,8 +331,7 @@ export const chatWithBobo = async (
       try {
         // 在後續的 Function Call 回覆輪次 (loopCount > 1) 中，
         // 避免帶入 googleSearch，因為 Gemini API 不支援在含有 functionResponse 的對話歷史中同時啟用 googleSearch（會導致伺服器回傳 500 錯誤且將金鑰加入冷卻）。
-        const currentTools =
-          loopCount > 1 ? tools.filter((t: any) => !t.googleSearch) : tools
+        const currentTools = loopCount > 1 ? tools.filter((t: any) => !t.googleSearch) : tools
 
         const hasSearch = currentTools.some((t: any) => t.googleSearch)
         const config: any = {
@@ -319,11 +346,13 @@ export const chatWithBobo = async (
           }
         }
 
-        response = await executeGenAI((ai) => ai.models.generateContent({
-          model: MODEL_NAME,
-          contents,
-          config
-        }))
+        response = await executeGenAI(ai =>
+          ai.models.generateContent({
+            model: MODEL_NAME,
+            contents,
+            config
+          })
+        )
       } catch (error: any) {
         const hasGoogleSearch = tools.some((t: any) => t.googleSearch)
         if (
@@ -349,11 +378,13 @@ export const chatWithBobo = async (
             }
           }
 
-          response = await executeGenAI((ai) => ai.models.generateContent({
-            model: MODEL_NAME,
-            contents,
-            config: backupConfig
-          }))
+          response = await executeGenAI(ai =>
+            ai.models.generateContent({
+              model: MODEL_NAME,
+              contents,
+              config: backupConfig
+            })
+          )
         } else {
           throw error
         }
@@ -455,7 +486,12 @@ export const chatWithBobo = async (
 
       // 準備將函式執行結果送回 AI 前，更新進度狀態
       if (onStatusUpdate) {
-        await onStatusUpdate(getProgressStatus('📈 正在為您撰寫專業的產業體質與股價趨勢分析... ✍️', lastFetchedStockResults))
+        await onStatusUpdate(
+          getProgressStatus(
+            '📈 正在為您撰寫專業的產業體質與股價趨勢分析... ✍️',
+            lastFetchedStockResults
+          )
+        )
       }
     }
 
@@ -486,10 +522,15 @@ export const chatWithBobo = async (
         replyText = slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' + replyText
       }
     }
-    console.log(`[AI Chat Response] User: ${authorName || userId} (${userId}) | Response: "${replyText.replace(/\n/g, ' ')}"`)
+    console.log(
+      `[AI Chat Response] User: ${authorName || userId} (${userId}) | Response: "${replyText.replace(/\n/g, ' ')}"`
+    )
     return replyText
   } catch (error: any) {
-    console.error(`[AI Chat Error] User: ${authorName || userId} (${userId}) | Error:`, error.message)
+    console.error(
+      `[AI Chat Error] User: ${authorName || userId} (${userId}) | Error:`,
+      error.message
+    )
     const status = error.status || error.response?.status
     const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout')
 
@@ -518,19 +559,26 @@ export const chatWithBobo = async (
           slogans.push(slogan)
         }
       }
-      const sloganHeader = slogans.length > 0 ? slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' : ''
-      fallbackReply = sloganHeader + `【分析師波波回報：因 Google AI 伺服器超時 ⏰ 無法為您產出詳細 analysis 報告，以下是為您查詢的即時股票數據】：\n${stockSummary}\n\n（您可以稍候再試一次以獲取完整報告喔！）`
+      const sloganHeader =
+        slogans.length > 0 ? slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' : ''
+      fallbackReply =
+        sloganHeader +
+        `【分析師波波回報：因 Google AI 伺服器超時 ⏰ 無法為您產出詳細 analysis 報告，以下是為您查詢的即時股票數據】：\n${stockSummary}\n\n（您可以稍候再試一次以獲取完整報告喔！）`
     } else if (status === 429) {
-      fallbackReply = '哎呀，波波現在被大家問到腦袋超載啦！🤯 (429 Rate Limit) 讓我喘口氣，等幾秒後再試試看嘛～'
+      fallbackReply =
+        '哎呀，波波現在被大家問到腦袋超載啦！🤯 (429 Rate Limit) 讓我喘口氣，等幾秒後再試試看嘛～'
     } else if (status === 503 || status === 500 || status === 502 || status === 504) {
-      fallbackReply = '嗚嗚，Google 的大腦伺服器現在好像掛掉了或在維護中 😭 (503 Service Unavailable)。可能要晚點再試，或是叫焦糖波波去檢查一下！'
+      fallbackReply =
+        '嗚嗚，Google 的大腦伺服器現在好像掛掉了或在維護中 😭 (503 Service Unavailable)。可能要晚點再試，或是叫焦糖波波去檢查一下！'
     } else if (isTimeout) {
       fallbackReply = '波波等大腦回應等到花兒都謝了... (連線逾時 ⏰) 可能是網路在搞事，請再試一次！'
     } else {
       fallbackReply = '波波大腦暫時當機了：' + (error.message || '未知錯誤')
     }
 
-    console.log(`[AI Chat Error Response] User: ${authorName || userId} (${userId}) | Response: "${fallbackReply.replace(/\n/g, ' ')}"`)
+    console.log(
+      `[AI Chat Error Response] User: ${authorName || userId} (${userId}) | Response: "${fallbackReply.replace(/\n/g, ' ')}"`
+    )
     return fallbackReply
   }
 }
@@ -540,8 +588,8 @@ export const chatWithBobo = async (
  */
 export function getNeutralLoadingStatus(): string {
   const date = new Date()
-  const utc = date.getTime() + (date.getTimezoneOffset() * 60000)
-  const gmt8Date = new Date(utc + (3600000 * 8))
+  const utc = date.getTime() + date.getTimezoneOffset() * 60000
+  const gmt8Date = new Date(utc + 3600000 * 8)
   const hour = gmt8Date.getHours()
   const day = gmt8Date.getDay() // 0 = 星期日, 6 = 星期六
   const isWeekend = day === 0 || day === 6
@@ -704,5 +752,3 @@ export function getNeutralLoadingStatus(): string {
   const ending = endings[Math.floor(Math.random() * endings.length)]
   return `${selected}，${ending}`
 }
-
-

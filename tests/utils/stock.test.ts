@@ -1,5 +1,15 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { getStockPrice, extractTickers, clearStockCache, searchStockTickerWithYahoo, fetchStockNameFromYahooPage, lookupStockTicker, getTaiwanStockName, taiwanStockMap, getStockSlogan } from '../../src/utils/stock'
+import {
+  getStockPrice,
+  extractTickers,
+  clearStockCache,
+  searchStockTickerWithYahoo,
+  fetchStockNameFromYahooPage,
+  lookupStockTicker,
+  getTaiwanStockName,
+  taiwanStockMap,
+  getStockSlogan
+} from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
 import axios from 'axios'
 
@@ -102,7 +112,10 @@ describe('Stock Utility Tests', () => {
         symbol: '4927.TW',
         name: '泰鼎-KY'
       })
-      expect(axiosGetSpy).toHaveBeenCalledWith(expect.stringContaining('query=%E6%B3%B0%E9%BC%8E'), expect.any(Object))
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        expect.stringContaining('query=%E6%B3%B0%E9%BC%8E'),
+        expect.any(Object)
+      )
     })
 
     test('should return null if no result found', async () => {
@@ -134,7 +147,10 @@ describe('Stock Utility Tests', () => {
 
       const result = await fetchStockNameFromYahooPage('2383.TW')
       expect(result).toBe('台光電')
-      expect(axiosGetSpy).toHaveBeenCalledWith('https://tw.stock.yahoo.com/quote/2383.TW', expect.any(Object))
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        'https://tw.stock.yahoo.com/quote/2383.TW',
+        expect.any(Object)
+      )
     })
 
     test('should return name for US stock page title', async () => {
@@ -144,7 +160,10 @@ describe('Stock Utility Tests', () => {
 
       const result = await fetchStockNameFromYahooPage('AAPL')
       expect(result).toBe('Apple Inc.')
-      expect(axiosGetSpy).toHaveBeenCalledWith('https://finance.yahoo.com/quote/AAPL', expect.any(Object))
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        'https://finance.yahoo.com/quote/AAPL',
+        expect.any(Object)
+      )
     })
 
     test('should decode &amp; HTML entities', async () => {
@@ -229,7 +248,8 @@ describe('Stock Utility Tests', () => {
         status: 200
       }
 
-      const axiosSpy = vi.spyOn(axios, 'get')
+      const axiosSpy = vi
+        .spyOn(axios, 'get')
         .mockResolvedValueOnce(mockCookieResponse as any)
         .mockResolvedValueOnce(mockTWSEResponse as any)
 
@@ -290,7 +310,8 @@ describe('Stock Utility Tests', () => {
         </html>
       `
 
-      const axiosSpy = vi.spyOn(axios, 'get')
+      const axiosSpy = vi
+        .spyOn(axios, 'get')
         .mockResolvedValueOnce(mockCookieResponse as any)
         .mockResolvedValueOnce(mockTWSEResponse as any)
         .mockResolvedValueOnce({ data: mockYahooTWHTML, status: 200 } as any)

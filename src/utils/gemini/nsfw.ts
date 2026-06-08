@@ -17,29 +17,31 @@ export const checkImageNSFW = async (
   const base64Image = imageBuffer.toString('base64')
 
   try {
-    const response = await executeGenAI((ai) => ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: [
-        {
-          inlineData: {
-            mimeType,
-            data: base64Image
+    const response = await executeGenAI(ai =>
+      ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: [
+          {
+            inlineData: {
+              mimeType,
+              data: base64Image
+            }
+          },
+          {
+            text:
+              '請分析這張圖片是否包含 NSFW (敏感、色情、露骨裸露、暴力、血腥) 內容。' +
+              '請嚴格評估。請只回覆一個 JSON 格式的物件，格式如下：' +
+              '{"nsfw": true/false, "reason": "簡短的繁體中文原因"}'
           }
-        },
-        {
-          text:
-            '請分析這張圖片是否包含 NSFW (敏感、色情、露骨裸露、暴力、血腥) 內容。' +
-            '請嚴格評估。請只回覆一個 JSON 格式的物件，格式如下：' +
-            '{"nsfw": true/false, "reason": "簡短的繁體中文原因"}'
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL
+          }
         }
-      ],
-      config: {
-        responseMimeType: 'application/json',
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.MINIMAL
-        }
-      }
-    }))
+      })
+    )
 
     const resultText = getResponseText(response)
     if (resultText) {

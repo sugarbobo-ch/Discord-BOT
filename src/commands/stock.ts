@@ -1,6 +1,16 @@
 import { Message, EmbedBuilder, AttachmentBuilder } from 'discord.js'
 import { Command } from './command.interface'
-import { getStockPrice, COMMON_STOCK_MAP, searchStockTickerWithYahoo, fetchStockNameFromYahooPage, lookupStockTicker, getTaiwanStockName, getStockSlogan, getStockChartData, fetchFullYahooQuote } from '../utils/stock'
+import {
+  getStockPrice,
+  COMMON_STOCK_MAP,
+  searchStockTickerWithYahoo,
+  fetchStockNameFromYahooPage,
+  lookupStockTicker,
+  getTaiwanStockName,
+  getStockSlogan,
+  getStockChartData,
+  fetchFullYahooQuote
+} from '../utils/stock'
 import { searchStockTickerWithAI, getChineseNameWithAI } from '../utils/gemini'
 import axios from 'axios'
 
@@ -18,13 +28,17 @@ export class StockCommand implements Command {
 
   public async execute(message: Message, args: string[]): Promise<void> {
     if (args.length === 0) {
-      await message.reply('請提供要查詢的股票代號或名稱，例如：\n• `!stock 2330`\n• `!stock 美光`\n• `!stock 華通`')
+      await message.reply(
+        '請提供要查詢的股票代號或名稱，例如：\n• `!stock 2330`\n• `!stock 美光`\n• `!stock 華通`'
+      )
       return
     }
 
     const query = args.join(' ').trim()
     if (!query) {
-      await message.reply('請提供要查詢的股票代號或名稱，例如：\n• `!stock 2330`\n• `!stock 美光`\n• `!stock 華通`')
+      await message.reply(
+        '請提供要查詢的股票代號或名稱，例如：\n• `!stock 2330`\n• `!stock 美光`\n• `!stock 華通`'
+      )
       return
     }
 
@@ -38,7 +52,7 @@ export class StockCommand implements Command {
       targetTicker = resolved
     } else {
       const isDirectTicker = /^[A-Za-z0-9.-]+$/.test(query)
-      
+
       if (!isDirectTicker) {
         try {
           statusMessage = await message.reply(`🔍 正在搜尋「${query}」的股票代碼...`)
@@ -139,11 +153,12 @@ export class StockCommand implements Command {
         const isPositive = result.change > 0
         const isNegative = result.change < 0
         const sign = isPositive ? '+' : ''
-        
+
         const changeVal = formatValue(result.change)
-        const percentVal = result.changePercent !== undefined && result.changePercent !== null
-          ? `(${isPositive ? '+' : ''}${result.changePercent.toFixed(2)}%)`
-          : ''
+        const percentVal =
+          result.changePercent !== undefined && result.changePercent !== null
+            ? `(${isPositive ? '+' : ''}${result.changePercent.toFixed(2)}%)`
+            : ''
 
         let emoji = '➖ '
         if (isPositive) {
@@ -153,7 +168,7 @@ export class StockCommand implements Command {
           emoji = '🔻 '
           embedColor = isTaiwanStock ? 0x2ecc71 : 0xe74c3c // 台股綠色跌，美股紅色跌
         }
-        
+
         changeStr = `${emoji}${sign}${changeVal} ${percentVal}`
       }
 
@@ -173,10 +188,22 @@ export class StockCommand implements Command {
         .addFields(
           { name: '最新價格', value: priceStr, inline: true },
           { name: '漲跌幅', value: changeStr, inline: true },
-          { name: '今日區間', value: `${formatValue(result.dayLow)} - ${formatValue(result.dayHigh)}`, inline: true },
-          { name: '昨收 / 開盤', value: `${formatValue(result.previousClose)} / ${formatValue(result.open)}`, inline: true },
+          {
+            name: '今日區間',
+            value: `${formatValue(result.dayLow)} - ${formatValue(result.dayHigh)}`,
+            inline: true
+          },
+          {
+            name: '昨收 / 開盤',
+            value: `${formatValue(result.previousClose)} / ${formatValue(result.open)}`,
+            inline: true
+          },
           { name: '成交量', value: formatValue(result.volume), inline: true },
-          { name: '52週區間', value: `${formatValue(result.fiftyTwoWeekLow)} - ${formatValue(result.fiftyTwoWeekHigh)}`, inline: true }
+          {
+            name: '52週區間',
+            value: `${formatValue(result.fiftyTwoWeekLow)} - ${formatValue(result.fiftyTwoWeekHigh)}`,
+            inline: true
+          }
         )
         .setTimestamp()
 
@@ -185,153 +212,182 @@ export class StockCommand implements Command {
 
       let finalMsg: Message
       if (statusMessage) {
-        await statusMessage.edit({ content: content || `✅ 已找到「${query}」的代碼為 \`${targetTicker}\`：`, embeds: [embed] })
+        await statusMessage.edit({
+          content: content || `✅ 已找到「${query}」的代碼為 \`${targetTicker}\`：`,
+          embeds: [embed]
+        })
         finalMsg = statusMessage as Message
       } else {
-        finalMsg = await message.reply({ content, embeds: [embed] }) as Message
+        finalMsg = (await message.reply({ content, embeds: [embed] })) as Message
       }
 
       // 背景非同步取得 52 週指標及繪製 K 線圖
       if (!process.env.VITEST) {
-        (async () => {
-        try {
-          // 1. 取得歷史 K 線數據 (過去 40 天)
-          const quotes = await getStockChartData(result.symbol, 40);
-          const validQuotes = quotes
-            .filter((q: any) => q.date && q.open !== null && q.high !== null && q.low !== null && q.close !== null)
-            .map((q: any) => ({
-              x: new Date(q.date).getTime(),
-              o: q.open,
-              h: q.high,
-              l: q.low,
-              c: q.close
-            }))
-            .slice(-30); // 只保留最近 30 筆
+        ;(async () => {
+          try {
+            // 1. 取得歷史 K 線數據 (過去 40 天)
+            const quotes = await getStockChartData(result.symbol, 40)
+            const validQuotes = quotes
+              .filter(
+                (q: any) =>
+                  q.date && q.open !== null && q.high !== null && q.low !== null && q.close !== null
+              )
+              .map((q: any) => ({
+                x: new Date(q.date).getTime(),
+                o: q.open,
+                h: q.high,
+                l: q.low,
+                c: q.close
+              }))
+              .slice(-30) // 只保留最近 30 筆
 
-          // 2. 獲取 Yahoo 完整 Quote 補全 52 週最高/最低 (如果本來沒有的話)
-          let updatedLow = result.fiftyTwoWeekLow;
-          let updatedHigh = result.fiftyTwoWeekHigh;
-          
-          if (updatedLow === undefined || updatedHigh === undefined) {
-            const fullQuote = await fetchFullYahooQuote(result.symbol);
-            if (fullQuote) {
-              if (updatedLow === undefined && fullQuote.fiftyTwoWeekLow !== undefined) {
-                updatedLow = fullQuote.fiftyTwoWeekLow;
-              }
-              if (updatedHigh === undefined && fullQuote.fiftyTwoWeekHigh !== undefined) {
-                updatedHigh = fullQuote.fiftyTwoWeekHigh;
+            // 2. 獲取 Yahoo 完整 Quote 補全 52 週最高/最低 (如果本來沒有的話)
+            let updatedLow = result.fiftyTwoWeekLow
+            let updatedHigh = result.fiftyTwoWeekHigh
+
+            if (updatedLow === undefined || updatedHigh === undefined) {
+              const fullQuote = await fetchFullYahooQuote(result.symbol)
+              if (fullQuote) {
+                if (updatedLow === undefined && fullQuote.fiftyTwoWeekLow !== undefined) {
+                  updatedLow = fullQuote.fiftyTwoWeekLow
+                }
+                if (updatedHigh === undefined && fullQuote.fiftyTwoWeekHigh !== undefined) {
+                  updatedHigh = fullQuote.fiftyTwoWeekHigh
+                }
               }
             }
-          }
 
-          // 3. 準備更新後的 Embed
-          const updatedEmbed = EmbedBuilder.from(embed);
+            // 3. 準備更新後的 Embed
+            const updatedEmbed = EmbedBuilder.from(embed)
 
-          // 更新 52週區間 欄位
-          updatedEmbed.setFields([
-            { name: '最新價格', value: priceStr, inline: true },
-            { name: '漲跌幅', value: changeStr, inline: true },
-            { name: '今日區間', value: `${formatValue(result.dayLow)} - ${formatValue(result.dayHigh)}`, inline: true },
-            { name: '昨收 / 開盤', value: `${formatValue(result.previousClose)} / ${formatValue(result.open)}`, inline: true },
-            { name: '成交量', value: formatValue(result.volume), inline: true },
-            { name: '52週區間', value: `${formatValue(updatedLow)} - ${formatValue(updatedHigh)}`, inline: true }
-          ]);
-
-          // 4. 如果有歷史 K 線數據，產生 K 線圖並附加
-          const editPayload: any = { embeds: [updatedEmbed] };
-
-          if (validQuotes.length > 0) {
-            const isTw = result.symbol.endsWith('.TW') || result.symbol.endsWith('.TWO');
-            const colorUp = isTw ? '#e74c3c' : '#2ecc71';
-            const colorDown = isTw ? '#2ecc71' : '#e74c3c';
-
-            const chartConfig = {
-              type: 'candlestick',
-              data: {
-                datasets: [{
-                  label: `${displayName} (${result.symbol}) K線圖 (近30天)`,
-                  data: validQuotes,
-                  color: {
-                    up: colorUp,
-                    down: colorDown,
-                    unchanged: '#7f8c8d'
-                  },
-                  borderColor: {
-                    up: colorUp,
-                    down: colorDown,
-                    unchanged: '#7f8c8d'
-                  }
-                }]
+            // 更新 52週區間 欄位
+            updatedEmbed.setFields([
+              { name: '最新價格', value: priceStr, inline: true },
+              { name: '漲跌幅', value: changeStr, inline: true },
+              {
+                name: '今日區間',
+                value: `${formatValue(result.dayLow)} - ${formatValue(result.dayHigh)}`,
+                inline: true
               },
-              options: {
-                scales: {
-                  x: {
-                    type: 'timeseries',
-                    time: {
-                      unit: 'day',
-                      displayFormats: {
-                        day: 'M/d',
-                        month: 'yyyy/M',
-                        year: 'yyyy'
+              {
+                name: '昨收 / 開盤',
+                value: `${formatValue(result.previousClose)} / ${formatValue(result.open)}`,
+                inline: true
+              },
+              { name: '成交量', value: formatValue(result.volume), inline: true },
+              {
+                name: '52週區間',
+                value: `${formatValue(updatedLow)} - ${formatValue(updatedHigh)}`,
+                inline: true
+              }
+            ])
+
+            // 4. 如果有歷史 K 線數據，產生 K 線圖並附加
+            const editPayload: any = { embeds: [updatedEmbed] }
+
+            if (validQuotes.length > 0) {
+              const isTw = result.symbol.endsWith('.TW') || result.symbol.endsWith('.TWO')
+              const colorUp = isTw ? '#e74c3c' : '#2ecc71'
+              const colorDown = isTw ? '#2ecc71' : '#e74c3c'
+
+              const chartConfig = {
+                type: 'candlestick',
+                data: {
+                  datasets: [
+                    {
+                      label: `${displayName} (${result.symbol}) K線圖 (近30天)`,
+                      data: validQuotes,
+                      color: {
+                        up: colorUp,
+                        down: colorDown,
+                        unchanged: '#7f8c8d'
+                      },
+                      borderColor: {
+                        up: colorUp,
+                        down: colorDown,
+                        unchanged: '#7f8c8d'
+                      }
+                    }
+                  ]
+                },
+                options: {
+                  scales: {
+                    x: {
+                      type: 'timeseries',
+                      time: {
+                        unit: 'day',
+                        displayFormats: {
+                          day: 'M/d',
+                          month: 'yyyy/M',
+                          year: 'yyyy'
+                        }
+                      },
+                      grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                      },
+                      ticks: {
+                        color: '#ffffff',
+                        maxRotation: 0
                       }
                     },
-                    grid: {
-                      color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
+                    y: {
+                      grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                      },
+                      ticks: {
+                        color: '#ffffff'
+                      }
+                    }
+                  },
+                  plugins: {
+                    title: {
+                      display: true,
+                      text: `${displayName} (${result.symbol}) K線圖 (近30天)`,
                       color: '#ffffff',
-                      maxRotation: 0
-                    }
-                  },
-                  y: {
-                    grid: {
-                      color: 'rgba(255, 255, 255, 0.1)'
+                      font: {
+                        size: 16
+                      }
                     },
-                    ticks: {
-                      color: '#ffffff'
+                    legend: {
+                      display: false
                     }
-                  }
-                },
-                plugins: {
-                  title: {
-                    display: true,
-                    text: `${displayName} (${result.symbol}) K線圖 (近30天)`,
-                    color: '#ffffff',
-                    font: {
-                      size: 16
-                    }
-                  },
-                  legend: {
-                    display: false
                   }
                 }
               }
-            };
 
-            const chartRes = await axios.post('https://quickchart.io/chart', {
-              chart: chartConfig,
-              version: '3',
-              width: 600,
-              height: 350,
-              backgroundColor: '#1e1e24'
-            }, {
-              responseType: 'arraybuffer',
-              timeout: 10000
-            });
+              const chartRes = await axios.post(
+                'https://quickchart.io/chart',
+                {
+                  chart: chartConfig,
+                  version: '3',
+                  width: 600,
+                  height: 350,
+                  backgroundColor: '#1e1e24'
+                },
+                {
+                  responseType: 'arraybuffer',
+                  timeout: 10000
+                }
+              )
 
-            if (chartRes.status === 200) {
-              const attachment = new AttachmentBuilder(Buffer.from(chartRes.data), { name: 'kline.png' });
-              updatedEmbed.setImage('attachment://kline.png');
-              editPayload.files = [attachment];
+              if (chartRes.status === 200) {
+                const attachment = new AttachmentBuilder(Buffer.from(chartRes.data), {
+                  name: 'kline.png'
+                })
+                updatedEmbed.setImage('attachment://kline.png')
+                editPayload.files = [attachment]
+              }
             }
-          }
 
-          // 5. 更新編輯 Discord 訊息
-          await finalMsg.edit(editPayload);
-        } catch (bgErr: any) {
-          console.error('[Stock Background Update Error] Failed to update quote/chart:', bgErr.message);
-        }
-      })();
+            // 5. 更新編輯 Discord 訊息
+            await finalMsg.edit(editPayload)
+          } catch (bgErr: any) {
+            console.error(
+              '[Stock Background Update Error] Failed to update quote/chart:',
+              bgErr.message
+            )
+          }
+        })()
       }
     } catch (error: any) {
       console.error(`Error querying stock price for ${targetTicker}:`, error)

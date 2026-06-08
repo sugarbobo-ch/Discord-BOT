@@ -68,7 +68,7 @@ describe('BoboCommand Reply Tests', () => {
         isTextBased: () => true,
         sendTyping: vi.fn().mockResolvedValue(true),
         messages: {
-          fetch: vi.fn().mockImplementation((options) => {
+          fetch: vi.fn().mockImplementation(options => {
             if (typeof options === 'string') {
               if (options === 'replied_msg_id') {
                 return mockRepliedMsg
@@ -111,7 +111,10 @@ describe('BoboCommand Reply Tests', () => {
     await boboCommand.execute(mockMessage, ['你好'])
 
     // Verify axios downloaded the image
-    expect(axios.get).toHaveBeenCalledWith('https://example.com/attachments/123/456/image.png', expect.any(Object))
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://example.com/attachments/123/456/image.png',
+      expect.any(Object)
+    )
 
     // Verify chatWithBobo received the image as primary image (4th argument)
     const primaryImageArg = vi.mocked(chatWithBobo).mock.calls[0][3]
@@ -120,7 +123,9 @@ describe('BoboCommand Reply Tests', () => {
 
     // Verify channelHistoryContext reflects that the replied image is used
     const historyContextArg = vi.mocked(chatWithBobo).mock.calls[0][2]
-    expect(historyContextArg).toContain('[回覆的圖片 (由 小明 上傳，URL: https://example.com/attachments/123/456/image.png)]')
+    expect(historyContextArg).toContain(
+      '[回覆的圖片 (由 小明 上傳，URL: https://example.com/attachments/123/456/image.png)]'
+    )
   })
 
   test('should prioritize replied image as primary image if current message also has an image', async () => {
@@ -144,8 +149,14 @@ describe('BoboCommand Reply Tests', () => {
     await boboCommand.execute(mockMessage, ['你好'])
 
     // Verify both images downloaded
-    expect(axios.get).toHaveBeenCalledWith('https://example.com/attachments/999/888/current.jpg', expect.any(Object))
-    expect(axios.get).toHaveBeenCalledWith('https://example.com/attachments/123/456/replied.png', expect.any(Object))
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://example.com/attachments/999/888/current.jpg',
+      expect.any(Object)
+    )
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://example.com/attachments/123/456/replied.png',
+      expect.any(Object)
+    )
 
     // Primary image should be the replied message image
     const primaryImageArg = vi.mocked(chatWithBobo).mock.calls[0][3]
@@ -183,7 +194,9 @@ describe('BoboCommand Reply Tests', () => {
 
   test('should fallback to channel.send if message.reply throws an error during execution', async () => {
     mockMessage.reply = vi.fn().mockRejectedValue(new Error('Unknown Message'))
-    mockMessage.channel.send = vi.fn().mockResolvedValue({ delete: vi.fn().mockResolvedValue(true) })
+    mockMessage.channel.send = vi
+      .fn()
+      .mockResolvedValue({ delete: vi.fn().mockResolvedValue(true) })
 
     await boboCommand.execute(mockMessage, ['你好'])
 
@@ -200,7 +213,7 @@ describe('BoboCommand Reply Tests', () => {
 
   test('should clear typing interval and force stop typing by sending/deleting zero-width space', async () => {
     const mockDelete = vi.fn().mockResolvedValue(true)
-    const mockSend = vi.fn().mockImplementation((options) => {
+    const mockSend = vi.fn().mockImplementation(options => {
       if (options && options.content === '\u200B') {
         return Promise.resolve({ delete: mockDelete })
       }

@@ -80,9 +80,7 @@ const isRoleIconUrl = (urlStr: string): boolean => {
  */
 const getMessageImageUrl = (msg: Message): string | null => {
   // 1. 優先使用直接上傳的圖片附件
-  const imageAttachments = msg.attachments.filter(att =>
-    att.contentType?.startsWith('image/')
-  )
+  const imageAttachments = msg.attachments.filter(att => att.contentType?.startsWith('image/'))
   if (imageAttachments.size > 0) {
     const firstAtt = imageAttachments.first()
     if (firstAtt && !isDiscordUrlExpired(firstAtt.url)) {
@@ -133,12 +131,19 @@ const safeReply = async (msg: Message, content: any): Promise<Message | null> =>
 /**
  * 安全地編輯狀態訊息，如果狀態訊息或原始訊息失效/被刪，則改用 safeReply 發送新訊息
  */
-const safeEdit = async (statusMsg: Message | null, originalMsg: Message, content: any): Promise<Message | null> => {
+const safeEdit = async (
+  statusMsg: Message | null,
+  originalMsg: Message,
+  content: any
+): Promise<Message | null> => {
   if (statusMsg) {
     try {
       return await statusMsg.edit(content)
     } catch (err: any) {
-      console.warn(`Failed to edit status message ${statusMsg.id}, falling back to reply/send:`, err.message)
+      console.warn(
+        `Failed to edit status message ${statusMsg.id}, falling back to reply/send:`,
+        err.message
+      )
       return await safeReply(originalMsg, content)
     }
   } else {
@@ -310,7 +315,11 @@ export class BoboCommand implements Command {
             const imagesToDownload: { msgId: string; url: string }[] = []
 
             // 如果當前訊息有圖片附件，但主圖被回覆訊息的圖片佔用，則當前訊息圖片優先當作最優先/最新的歷史圖片
-            if (attachment && attachment.contentType?.startsWith('image/') && isImageFromRepliedMsg) {
+            if (
+              attachment &&
+              attachment.contentType?.startsWith('image/') &&
+              isImageFromRepliedMsg
+            ) {
               imagesToDownload.push({ msgId: message.id, url: attachment.url })
             }
 
@@ -339,7 +348,13 @@ export class BoboCommand implements Command {
             // 依序 [新 -> 舊] 下載以符合最新的那張圖在最前面的順序 (讓最新的歷史圖片標記為 1，較舊的歷史圖片標記為後，符合時序)
             const downloadedHistoryImagesMap = new Map<
               string,
-              { buffer: Buffer; mimeType: string; labelIndex: number; url: string; description: string }
+              {
+                buffer: Buffer
+                mimeType: string
+                labelIndex: number
+                url: string
+                description: string
+              }
             >()
             let labelIdx = 1
 
@@ -362,7 +377,9 @@ export class BoboCommand implements Command {
                         : 'image/jpeg'
 
                 // 獲取該圖片對應的訊息內容作為描述
-                const msg = historyMsgs.find(m => m.id === item.msgId) || (item.msgId === message.id ? message : null)
+                const msg =
+                  historyMsgs.find(m => m.id === item.msgId) ||
+                  (item.msgId === message.id ? message : null)
                 let description = ''
                 if (msg) {
                   const author = msg.member?.displayName || msg.author.username
@@ -403,9 +420,11 @@ export class BoboCommand implements Command {
             let currentProcessedContent = prompt
             if (isImageFromRepliedMsg && repliedMsgImageUrl) {
               const repliedSender = repliedMsg!.member?.displayName || repliedMsg!.author.username
-              currentProcessedContent = `[回覆的圖片 (由 ${repliedSender} 上傳，URL: ${repliedMsgImageUrl})] ${currentProcessedContent}`.trim()
+              currentProcessedContent =
+                `[回覆的圖片 (由 ${repliedSender} 上傳，URL: ${repliedMsgImageUrl})] ${currentProcessedContent}`.trim()
             } else if (hasAttachment && attachment) {
-              currentProcessedContent = `[當前圖片 (由 ${currentSender} 上傳，URL: ${attachment.url})] ${currentProcessedContent}`.trim()
+              currentProcessedContent =
+                `[當前圖片 (由 ${currentSender} 上傳，URL: ${attachment.url})] ${currentProcessedContent}`.trim()
             }
 
             let currentEntry = ''
@@ -419,93 +438,95 @@ export class BoboCommand implements Command {
             const historyEntries = historyMsgs
               .filter((msg: Message) => !isSystemMessage(msg)) // 過濾掉系統訊息（身分組通知等）
               .map((msg: Message, i) => {
-              const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
-              const secondsAgo = nowSeconds - msgTimeSeconds
+                const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
+                const secondsAgo = nowSeconds - msgTimeSeconds
 
-              // 計算權重：回覆訊息權重強行設為 1.00。其他歷史訊息則依位置與時間衰減，最大上限為 0.90
-              let weight = '0.90'
-              const isRepliedMessage = msg.id === repliedMsg?.id
-              if (isRepliedMessage) {
-                weight = '1.00'
-              } else {
-                let calculatedWeight = Math.pow((k - i) / k, 2)
-                const timeDecay = Math.max(0.1, Math.exp(-secondsAgo / 1800))
-                calculatedWeight = calculatedWeight * timeDecay
-                weight = Math.min(0.90, Math.max(0.01, calculatedWeight)).toFixed(2)
-              }
-
-              const authorName = msg.member?.displayName || msg.author.username
-              const sender = msg.author.id === message.client.user?.id ? '波波' : authorName
-
-              let processedContent = msg.content
-
-              // 優先使用已下載的標記
-              const downloadedImg = downloadedHistoryImagesMap.get(msg.id)
-              if (downloadedImg) {
-                const imgLabel = isRepliedMessage
-                  ? '回覆的圖片'
-                  : `歷史圖片 ${downloadedImg.labelIndex}`
-                processedContent =
-                  `[${imgLabel} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
-              }
-
-              // 處理所有附件 (圖片與影片)
-              const mediaAttachmentsInfo: string[] = []
-              msg.attachments.forEach(att => {
-                const isImage = att.contentType?.startsWith('image/')
-                const isVideo = att.contentType?.startsWith('video/')
-                if (isImage) {
-                  if (downloadedImg && downloadedImg.url === att.url) {
-                    return // 已被 downloadedImg 包含，不重複處理
-                  }
-                  mediaAttachmentsInfo.push(`[圖片附件 (由 ${sender} 上傳): ${att.url}]`)
-                } else if (isVideo) {
-                  mediaAttachmentsInfo.push(`[影片附件 (由 ${sender} 上傳): ${att.url}]`)
+                // 計算權重：回覆訊息權重強行設為 1.00。其他歷史訊息則依位置與時間衰減，最大上限為 0.90
+                let weight = '0.90'
+                const isRepliedMessage = msg.id === repliedMsg?.id
+                if (isRepliedMessage) {
+                  weight = '1.00'
+                } else {
+                  let calculatedWeight = Math.pow((k - i) / k, 2)
+                  const timeDecay = Math.max(0.1, Math.exp(-secondsAgo / 1800))
+                  calculatedWeight = calculatedWeight * timeDecay
+                  weight = Math.min(0.9, Math.max(0.01, calculatedWeight)).toFixed(2)
                 }
-              })
 
-              // 處理 Embed 圖片（連結預覽圖、K線圖等）
-              if (msg.embeds && msg.embeds.length > 0) {
-                for (const embed of msg.embeds) {
-                  const embedImageUrl = embed.image?.url || embed.thumbnail?.url
-                  if (embedImageUrl && !isRoleIconUrl(embedImageUrl)) {
-                    if (downloadedImg && downloadedImg.url === embedImageUrl) {
-                      continue // 已被 downloadedImg 包含，不重複處理
-                    }
-                    mediaAttachmentsInfo.push(`[Embed 圖片 (由 ${sender} 分享): ${embedImageUrl}]`)
-                  }
+                const authorName = msg.member?.displayName || msg.author.username
+                const sender = msg.author.id === message.client.user?.id ? '波波' : authorName
+
+                let processedContent = msg.content
+
+                // 優先使用已下載的標記
+                const downloadedImg = downloadedHistoryImagesMap.get(msg.id)
+                if (downloadedImg) {
+                  const imgLabel = isRepliedMessage
+                    ? '回覆的圖片'
+                    : `歷史圖片 ${downloadedImg.labelIndex}`
+                  processedContent =
+                    `[${imgLabel} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
                 }
-              }
 
-              // 處理內文中的 URL
-              const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
-              if (urlMatch) {
-                urlMatch.forEach(url => {
-                  if (isImageUrl(url)) {
-                    if (downloadedImg && downloadedImg.url === url) {
+                // 處理所有附件 (圖片與影片)
+                const mediaAttachmentsInfo: string[] = []
+                msg.attachments.forEach(att => {
+                  const isImage = att.contentType?.startsWith('image/')
+                  const isVideo = att.contentType?.startsWith('video/')
+                  if (isImage) {
+                    if (downloadedImg && downloadedImg.url === att.url) {
                       return // 已被 downloadedImg 包含，不重複處理
                     }
-                    processedContent = processedContent.replace(
-                      url,
-                      `[圖片連結 (由 ${sender} 分享): ${url}]`
-                    )
-                  } else if (isVideoUrl(url)) {
-                    processedContent = processedContent.replace(
-                      url,
-                      `[影片連結 (由 ${sender} 分享): ${url}]`
-                    )
+                    mediaAttachmentsInfo.push(`[圖片附件 (由 ${sender} 上傳): ${att.url}]`)
+                  } else if (isVideo) {
+                    mediaAttachmentsInfo.push(`[影片附件 (由 ${sender} 上傳): ${att.url}]`)
                   }
                 })
-              }
 
-              // 若有其他媒體附件，附加在內文後面
-              if (mediaAttachmentsInfo.length > 0) {
-                processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
-              }
+                // 處理 Embed 圖片（連結預覽圖、K線圖等）
+                if (msg.embeds && msg.embeds.length > 0) {
+                  for (const embed of msg.embeds) {
+                    const embedImageUrl = embed.image?.url || embed.thumbnail?.url
+                    if (embedImageUrl && !isRoleIconUrl(embedImageUrl)) {
+                      if (downloadedImg && downloadedImg.url === embedImageUrl) {
+                        continue // 已被 downloadedImg 包含，不重複處理
+                      }
+                      mediaAttachmentsInfo.push(
+                        `[Embed 圖片 (由 ${sender} 分享): ${embedImageUrl}]`
+                      )
+                    }
+                  }
+                }
 
-              const replyTargetLabel = isRepliedMessage ? ', 此為回覆目標' : ''
-              return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}${replyTargetLabel}] 內容: "${processedContent}"`
-            })
+                // 處理內文中的 URL
+                const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
+                if (urlMatch) {
+                  urlMatch.forEach(url => {
+                    if (isImageUrl(url)) {
+                      if (downloadedImg && downloadedImg.url === url) {
+                        return // 已被 downloadedImg 包含，不重複處理
+                      }
+                      processedContent = processedContent.replace(
+                        url,
+                        `[圖片連結 (由 ${sender} 分享): ${url}]`
+                      )
+                    } else if (isVideoUrl(url)) {
+                      processedContent = processedContent.replace(
+                        url,
+                        `[影片連結 (由 ${sender} 分享): ${url}]`
+                      )
+                    }
+                  })
+                }
+
+                // 若有其他媒體附件，附加在內文後面
+                if (mediaAttachmentsInfo.length > 0) {
+                  processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
+                }
+
+                const replyTargetLabel = isRepliedMessage ? ', 此為回覆目標' : ''
+                return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}${replyTargetLabel}] 內容: "${processedContent}"`
+              })
 
             channelHistoryContext = [currentEntry, ...historyEntries].join('\n')
           }

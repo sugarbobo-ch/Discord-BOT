@@ -43,6 +43,38 @@ export class NsfwCommand implements Command {
     }
   }
 
+  private getImageUrlFromMessage(msg: Message): string | null {
+    // 1. 優先使用直接上傳的圖片附件
+    const attachment = msg.attachments.find(
+      att => !!(att.contentType?.startsWith('image/') || this.isImageUrl(att.url))
+    )
+    if (attachment) {
+      return attachment.url
+    }
+
+    // 2. 從 Embed 中提取圖片（例如連結預覽圖、K線圖等）
+    if (msg.embeds && msg.embeds.length > 0) {
+      for (const embed of msg.embeds) {
+        const embedImageUrl = embed.image?.url || embed.thumbnail?.url
+        if (embedImageUrl && !embedImageUrl.includes('/role-icons/')) {
+          return embedImageUrl
+        }
+      }
+    }
+
+    // 3. 從內文中尋找圖片連結
+    const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
+    if (urlMatch) {
+      for (const url of urlMatch) {
+        if (this.isImageUrl(url)) {
+          return url
+        }
+      }
+    }
+
+    return null
+  }
+
   private async getSourceURL(message: Message, args: string[]): Promise<void> {
     let imageUrl = ''
 
@@ -53,25 +85,14 @@ export class NsfwCommand implements Command {
 
     // 2. Check if current message has image attachments
     if (!imageUrl) {
-      const attachment = message.attachments.first()
-      if (attachment && attachment.contentType?.startsWith('image/')) {
-        imageUrl = attachment.url
-      }
+      imageUrl = this.getImageUrlFromMessage(message) || ''
     }
 
     // 3. Check if current message is a reply
     if (!imageUrl && message.reference && message.reference.messageId) {
       try {
         const refMsg = await message.channel.messages.fetch(message.reference.messageId)
-        const attachment = refMsg.attachments.first()
-        if (attachment && attachment.contentType?.startsWith('image/')) {
-          imageUrl = attachment.url
-        } else {
-          const urlMatch = refMsg.content.match(/https?:\/\/\S+/i)
-          if (urlMatch && this.isImageUrl(urlMatch[0])) {
-            imageUrl = urlMatch[0]
-          }
-        }
+        imageUrl = this.getImageUrlFromMessage(refMsg) || ''
       } catch (err: any) {
         console.warn('Failed to fetch referenced message:', err.message)
       }
@@ -82,14 +103,9 @@ export class NsfwCommand implements Command {
       try {
         const fetched = await message.channel.messages.fetch({ limit: 20, before: message.id })
         for (const msg of fetched.values()) {
-          const attachment = msg.attachments.first()
-          if (attachment && attachment.contentType?.startsWith('image/')) {
-            imageUrl = attachment.url
-            break
-          }
-          const urlMatch = msg.content.match(/https?:\/\/\S+/i)
-          if (urlMatch && this.isImageUrl(urlMatch[0])) {
-            imageUrl = urlMatch[0]
+          const url = this.getImageUrlFromMessage(msg)
+          if (url) {
+            imageUrl = url
             break
           }
         }
@@ -99,7 +115,9 @@ export class NsfwCommand implements Command {
     }
 
     if (!imageUrl) {
-      ;(message.channel as any).send('找不到可以搜尋的圖片，請提供圖片網址、附帶圖片或回覆一張圖片！')
+      ;(message.channel as any).send(
+        '找不到可以搜尋的圖片，請提供圖片網址、附帶圖片或回覆一張圖片！'
+      )
       return
     }
 
@@ -123,7 +141,7 @@ export class NsfwCommand implements Command {
       if (!['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) {
         ext = 'png'
       }
-      
+
       const contentType = response.headers['content-type']
       const mimeType = (typeof contentType === 'string' ? contentType : undefined) || `image/${ext}`
 
@@ -134,7 +152,8 @@ export class NsfwCommand implements Command {
 
       const uploadResponse = await axios.post('https://saucenao.com/search.php', formData, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },
         timeout: 15000
       })
@@ -147,7 +166,7 @@ export class NsfwCommand implements Command {
         const fileName = matchEdit[1]
         const tempUrl = `https://saucenao.com/userdata/tmp/${fileName}`
         const finalSearchUrl = `https://saucenao.com/search.php?db=999&url=${encodeURIComponent(tempUrl)}`
-        
+
         // Parse the results from the HTML response
         const results = this.parseSaucenaoHtml(html)
         const bestResult = results[0]
@@ -160,14 +179,18 @@ export class NsfwCommand implements Command {
             .addFields({ name: '相似度', value: `${bestResult.similarity}%`, inline: true })
 
           if (bestResult.authorName) {
-            const authorVal = bestResult.authorUrl 
-              ? `[${bestResult.authorName}](${bestResult.authorUrl})` 
+            const authorVal = bestResult.authorUrl
+              ? `[${bestResult.authorName}](${bestResult.authorUrl})`
               : bestResult.authorName
             embed.addFields({ name: '作者 (Creator)', value: authorVal, inline: true })
           }
 
           if (bestResult.sourceUrl) {
-            embed.addFields({ name: '來源 (Source)', value: `[點我前往](${bestResult.sourceUrl})`, inline: true })
+            embed.addFields({
+              name: '來源 (Source)',
+              value: `[點我前往](${bestResult.sourceUrl})`,
+              inline: true
+            })
           }
 
           if (bestResult.material) {
@@ -175,7 +198,11 @@ export class NsfwCommand implements Command {
           }
 
           if (bestResult.characters) {
-            embed.addFields({ name: '角色 (Characters)', value: bestResult.characters, inline: false })
+            embed.addFields({
+              name: '角色 (Characters)',
+              value: bestResult.characters,
+              inline: false
+            })
           }
 
           if (bestResult.thumbnail) {
@@ -186,8 +213,9 @@ export class NsfwCommand implements Command {
             embed.setDescription('⚠️ 相似度較低，此結果可能非目標圖片。')
           }
 
-          embed.setFooter({ text: '搜尋服務由 Saucenao 提供 • 點擊標題查看完整網頁結果' })
-               .setTimestamp()
+          embed
+            .setFooter({ text: '搜尋服務由 Saucenao 提供 • 點擊標題查看完整網頁結果' })
+            .setTimestamp()
 
           if (statusMessage) {
             await statusMessage.edit({ content: '搜尋完成！', embeds: [embed] })
@@ -255,7 +283,9 @@ export class NsfwCommand implements Command {
       let title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : undefined
 
       // 4. Metadata content
-      const contentColumnMatch = tableHtml.match(/<div class="resultcontentcolumn">([\s\S]*?)<\/div>/i)
+      const contentColumnMatch = tableHtml.match(
+        /<div class="resultcontentcolumn">([\s\S]*?)<\/div>/i
+      )
       const metadataHtml = contentColumnMatch ? contentColumnMatch[1] : ''
 
       let sourceUrl: string | undefined
@@ -266,7 +296,7 @@ export class NsfwCommand implements Command {
 
       const itemRegex = /<strong>([\s\S]*?):?\s*<\/strong>([\s\S]*?)(?=<br|$)/gi
       let itemMatch: RegExpExecArray | null
-      
+
       // Extract the first link in the content column as a default sourceUrl if not matched yet
       const firstLinkMatch = metadataHtml.match(/href="([^"]+)"/i)
       if (firstLinkMatch) {
@@ -274,11 +304,19 @@ export class NsfwCommand implements Command {
       }
 
       while ((itemMatch = itemRegex.exec(metadataHtml)) !== null) {
-        const label = itemMatch[1].replace(/<[^>]+>/g, '').trim().toLowerCase()
+        const label = itemMatch[1]
+          .replace(/<[^>]+>/g, '')
+          .trim()
+          .toLowerCase()
         const valHtml = itemMatch[2].trim()
         const valText = valHtml.replace(/<[^>]+>/g, '').trim()
 
-        if (label.includes('creator') || label.includes('author') || label.includes('member') || label.includes('artist')) {
+        if (
+          label.includes('creator') ||
+          label.includes('author') ||
+          label.includes('member') ||
+          label.includes('artist')
+        ) {
           authorName = valText
           const authorLinkMatch = valHtml.match(/href="([^"]+)"/i)
           if (authorLinkMatch) {
@@ -307,7 +345,10 @@ export class NsfwCommand implements Command {
         authorUrl,
         material,
         characters,
-        rawMetadata: metadataHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+        rawMetadata: metadataHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
       })
     }
 

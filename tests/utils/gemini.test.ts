@@ -23,8 +23,8 @@ const { mockGenerateContent } = vi.hoisted(() => {
   }
 })
 
-vi.mock('@google/genai', async (importOriginal) => {
-  const actual = await importOriginal() as any
+vi.mock('@google/genai', async importOriginal => {
+  const actual = (await importOriginal()) as any
   return {
     ...actual,
     GoogleGenAI: class MockGoogleGenAI {
@@ -37,8 +37,8 @@ vi.mock('@google/genai', async (importOriginal) => {
 
 vi.mock('yahoo-finance2')
 vi.mock('axios')
-vi.mock('../../src/utils/stock', async (importOriginal) => {
-  const actual = await importOriginal() as any
+vi.mock('../../src/utils/stock', async importOriginal => {
+  const actual = (await importOriginal()) as any
   return {
     ...actual,
     searchStockTickerWithYahoo: vi.fn().mockResolvedValue(null)
@@ -277,22 +277,20 @@ describe('Gemini Utility Tests', () => {
       }
     ]
 
-    await chatWithBobo(
-      '這張圖是什麼？',
-      'user_test_desc',
-      undefined,
-      currentImage,
-      historyImages
-    )
+    await chatWithBobo('這張圖是什麼？', 'user_test_desc', undefined, currentImage, historyImages)
 
     // Verify mockGenerateContent was called with correct order of parts
     const lastCall = mockGenerateContent.mock.calls[mockGenerateContent.mock.calls.length - 1][0]
     const parts = lastCall.contents[0].parts
 
     // Find indices of description texts and inlineData
-    const currentDescIdx = parts.findIndex((p: any) => p.text?.includes('【此圖片對應的訊息內容】\n當前上傳的圖片'))
+    const currentDescIdx = parts.findIndex((p: any) =>
+      p.text?.includes('【此圖片對應的訊息內容】\n當前上傳的圖片')
+    )
     const currentImgIdx = parts.findIndex((p: any) => p.inlineData?.mimeType === 'image/jpeg')
-    const historyDescIdx = parts.findIndex((p: any) => p.text?.includes('【此歷史圖片對應的訊息內容】\n歷史圖片 1'))
+    const historyDescIdx = parts.findIndex((p: any) =>
+      p.text?.includes('【此歷史圖片對應的訊息內容】\n歷史圖片 1')
+    )
     const historyImgIdx = parts.findIndex((p: any) => p.inlineData?.mimeType === 'image/png')
     const promptIdx = parts.findIndex((p: any) => p.text === '這張圖是什麼？')
 
@@ -462,9 +460,7 @@ describe('Gemini Utility Tests', () => {
           expect.objectContaining({
             parts: expect.arrayContaining([
               expect.objectContaining({
-                text: expect.stringContaining(
-                  '股票名稱: 仁寶 (代號: 2324.TW) 最新數據'
-                )
+                text: expect.stringContaining('股票名稱: 仁寶 (代號: 2324.TW) 最新數據')
               })
             ])
           })
@@ -513,14 +509,10 @@ describe('Gemini Utility Tests', () => {
           expect.objectContaining({
             parts: expect.arrayContaining([
               expect.objectContaining({
-                text: expect.stringContaining(
-                  '股票名稱: 直得科技 (代號: 1597.TW) 最新數據'
-                )
+                text: expect.stringContaining('股票名稱: 直得科技 (代號: 1597.TW) 最新數據')
               }),
               expect.objectContaining({
-                text: expect.stringContaining(
-                  '股票名稱: 蘋果公司 (代號: AAPL) 最新數據'
-                )
+                text: expect.stringContaining('股票名稱: 蘋果公司 (代號: AAPL) 最新數據')
               })
             ])
           })
@@ -852,7 +844,8 @@ describe('Gemini Utility Tests', () => {
     })
 
     test('should try .TWO if .TW fails for OTC stocks', async () => {
-      const quoteSpy = vi.spyOn(yahooFinance.prototype, 'quote')
+      const quoteSpy = vi
+        .spyOn(yahooFinance.prototype, 'quote')
         .mockRejectedValueOnce(new Error('Not found on TW'))
         .mockResolvedValueOnce({
           regularMarketPrice: 80,
@@ -916,13 +909,15 @@ describe('Gemini Utility Tests', () => {
         candidates: [{ content: { parts: [{ text: 'Success on key 2' }] } }]
       })
 
-      const reply = await executeGenAI((ai) => ai.models.generateContent({
-        model: 'model',
-        contents: [{ parts: [{ text: 'test' }] }]
-      }))
+      const reply = await executeGenAI(ai =>
+        ai.models.generateContent({
+          model: 'model',
+          contents: [{ parts: [{ text: 'test' }] }]
+        })
+      )
 
       expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success on key 2')
-      
+
       // Verify first key is put on cooldown
       const keys = getApiKeys()
       const firstKey = keys.find(k => k.key === 'rate_limit_key1')
@@ -943,13 +938,15 @@ describe('Gemini Utility Tests', () => {
         candidates: [{ content: { parts: [{ text: 'Success on key 2 after 503' }] } }]
       })
 
-      const reply = await executeGenAI((ai) => ai.models.generateContent({
-        model: 'model',
-        contents: [{ parts: [{ text: 'test' }] }]
-      }))
+      const reply = await executeGenAI(ai =>
+        ai.models.generateContent({
+          model: 'model',
+          contents: [{ parts: [{ text: 'test' }] }]
+        })
+      )
 
       expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success on key 2 after 503')
-      
+
       // Verify first key is put on cooldown (with a cooldown value set in the future)
       const keys = getApiKeys()
       const firstKey = keys.find(k => k.key === 'transient_key1')
@@ -959,7 +956,7 @@ describe('Gemini Utility Tests', () => {
     test('should select the key closest to expiring if all are on cooldown', async () => {
       process.env.GEMINI_API_KEYS = 'cooldown_key1, cooldown_key2'
       const keys = getApiKeys()
-      
+
       // Set both on cooldown
       const now = Date.now()
       keys[0].cooldownUntil = now + 10000 // expires in 10s
@@ -969,10 +966,12 @@ describe('Gemini Utility Tests', () => {
         candidates: [{ content: { parts: [{ text: 'Success' }] } }]
       })
 
-      const reply = await executeGenAI((ai) => ai.models.generateContent({
-        model: 'model',
-        contents: [{ parts: [{ text: 'test' }] }]
-      }))
+      const reply = await executeGenAI(ai =>
+        ai.models.generateContent({
+          model: 'model',
+          contents: [{ parts: [{ text: 'test' }] }]
+        })
+      )
 
       expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Success')
     })
@@ -994,10 +993,12 @@ describe('Gemini Utility Tests', () => {
         candidates: [{ content: { parts: [{ text: 'Succeeded on retry' }] } }]
       })
 
-      const reply = await executeGenAI((ai) => ai.models.generateContent({
-        model: 'model',
-        contents: [{ parts: [{ text: 'test' }] }]
-      }))
+      const reply = await executeGenAI(ai =>
+        ai.models.generateContent({
+          model: 'model',
+          contents: [{ parts: [{ text: 'test' }] }]
+        })
+      )
 
       expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Succeeded on retry')
       expect(mockGenerateContent).toHaveBeenCalledTimes(2)
@@ -1018,10 +1019,12 @@ describe('Gemini Utility Tests', () => {
         .mockRejectedValueOnce({ status: 503, message: 'Service Unavailable' })
 
       await expect(
-        executeGenAI((ai) => ai.models.generateContent({
-          model: 'model',
-          contents: [{ parts: [{ text: 'test' }] }]
-        }))
+        executeGenAI(ai =>
+          ai.models.generateContent({
+            model: 'model',
+            contents: [{ parts: [{ text: 'test' }] }]
+          })
+        )
       ).rejects.toThrow('Service Unavailable')
 
       expect(mockGenerateContent).toHaveBeenCalledTimes(4)
@@ -1060,4 +1063,3 @@ describe('Gemini Utility Tests', () => {
     })
   })
 })
-

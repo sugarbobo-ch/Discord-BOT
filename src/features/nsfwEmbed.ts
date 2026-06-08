@@ -160,7 +160,9 @@ const fetchHappymhMetadata = async (url: string): Promise<EmbedMetadata | null> 
     })
     html = res.data
   } catch (error: any) {
-    console.warn(`[fetchHappymhMetadata] Direct fetch failed (${error.message || error}). Retrying via Google Translate proxy...`)
+    console.warn(
+      `[fetchHappymhMetadata] Direct fetch failed (${error.message || error}). Retrying via Google Translate proxy...`
+    )
     const translateUrl = `https://translate.google.com/translate?sl=auto&tl=zh-TW&u=${encodeURIComponent(targetUrl)}`
     try {
       const res = await axios.get(translateUrl, {
@@ -173,7 +175,10 @@ const fetchHappymhMetadata = async (url: string): Promise<EmbedMetadata | null> 
       })
       html = res.data
     } catch (proxyError: any) {
-      console.error(`[fetchHappymhMetadata] Google Translate proxy fetch also failed:`, proxyError.message || proxyError)
+      console.error(
+        `[fetchHappymhMetadata] Google Translate proxy fetch also failed:`,
+        proxyError.message || proxyError
+      )
       return null
     }
   }
@@ -186,7 +191,9 @@ const fetchHappymhMetadata = async (url: string): Promise<EmbedMetadata | null> 
     let title = titleMatch ? titleMatch[1].trim() : '嗨皮漫畫'
 
     if (title.includes('Google 翻譯') || title.includes('Google Translate')) {
-      const originalTitleMatch = html.match(/<title>(?!Google 翻譯|Google Translate)([^<]+)<\/title>/i)
+      const originalTitleMatch = html.match(
+        /<title>(?!Google 翻譯|Google Translate)([^<]+)<\/title>/i
+      )
       if (originalTitleMatch) {
         title = originalTitleMatch[1].trim()
       } else {
@@ -232,7 +239,10 @@ const fetchHappymhMetadata = async (url: string): Promise<EmbedMetadata | null> 
       color: 0x9c27b0
     }
   } catch (error: any) {
-    console.error(`[fetchHappymhMetadata] Error parsing metadata for ${url}:`, error.message || error)
+    console.error(
+      `[fetchHappymhMetadata] Error parsing metadata for ${url}:`,
+      error.message || error
+    )
   }
   return null
 }
@@ -301,12 +311,20 @@ const fetch18ComicMetadata = async (url: string): Promise<EmbedMetadata | null> 
     let title = titleMatch ? titleMatch[1].trim() : '禁漫天堂'
     title = title.replace(/\s*-\s*禁漫天堂.*$/, '').trim()
 
-    const scrambleOriginal = html.match(/class="[^"]*scramble-page[^"]*"[^]*?<img[^>]+data-original="([^"]+)"/i)
-    const thumbAlbumsOriginal = html.match(/class="[^"]*thumb-overlay-albums[^"]*"[^]*?<img[^>]+data-original="([^"]+)"/i)
+    const scrambleOriginal = html.match(
+      /class="[^"]*scramble-page[^"]*"[^]*?<img[^>]+data-original="([^"]+)"/i
+    )
+    const thumbAlbumsOriginal = html.match(
+      /class="[^"]*thumb-overlay-albums[^"]*"[^]*?<img[^>]+data-original="([^"]+)"/i
+    )
     const albumCoverSrc = html.match(/id="album_photo_cover"[^]*?<img[^>]+src="([^"]+)"/i)
-    const albumCoverOriginal = html.match(/id="album_photo_cover"[^]*?<img[^>]+data-original="([^"]+)"/i)
+    const albumCoverOriginal = html.match(
+      /id="album_photo_cover"[^]*?<img[^>]+data-original="([^"]+)"/i
+    )
     const scrambleSrc = html.match(/class="[^"]*scramble-page[^"]*"[^]*?<img[^>]+src="([^"]+)"/i)
-    const thumbAlbumsSrc = html.match(/class="[^"]*thumb-overlay-albums[^"]*"[^]*?<img[^>]+src="([^"]+)"/i)
+    const thumbAlbumsSrc = html.match(
+      /class="[^"]*thumb-overlay-albums[^"]*"[^]*?<img[^>]+src="([^"]+)"/i
+    )
     const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/i)
     const thumbOverlayMatch = html.match(/<div class="thumb-overlay">[^]*?<img[^>]+src="([^"]+)"/i)
 

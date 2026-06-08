@@ -1,7 +1,11 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { StockCommand } from '../../src/commands/stock'
 import { searchStockTickerWithAI, getChineseNameWithAI } from '../../src/utils/gemini'
-import { searchStockTickerWithYahoo, fetchStockNameFromYahooPage, clearStockCache } from '../../src/utils/stock'
+import {
+  searchStockTickerWithYahoo,
+  fetchStockNameFromYahooPage,
+  clearStockCache
+} from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
 
 vi.mock('yahoo-finance2')
@@ -10,8 +14,8 @@ vi.mock('../../src/utils/gemini', () => ({
   searchStockTickerWithAI: vi.fn(),
   getChineseNameWithAI: vi.fn()
 }))
-vi.mock('../../src/utils/stock', async (importOriginal) => {
-  const actual = await importOriginal() as any
+vi.mock('../../src/utils/stock', async importOriginal => {
+  const actual = (await importOriginal()) as any
   return {
     ...actual,
     searchStockTickerWithYahoo: vi.fn(),
@@ -43,7 +47,9 @@ describe('StockCommand Tests', () => {
 
   test('should reply with help message when args is empty', async () => {
     await stockCommand.execute(mockMessage, [])
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.stringContaining('請提供要查詢的股票代號或名稱'))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.stringContaining('請提供要查詢的股票代號或名稱')
+    )
   })
 
   test('should query direct ticker 2330 successfully', async () => {
@@ -65,9 +71,11 @@ describe('StockCommand Tests', () => {
     await stockCommand.execute(mockMessage, ['2330'])
 
     expect(quoteSpy).toHaveBeenCalledWith('2330.TW')
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.objectContaining({
-      embeds: expect.any(Array)
-    }))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.any(Array)
+      })
+    )
 
     const embed = mockMessage.reply.mock.calls[0][0].embeds[0]
     expect(embed.data.title).toContain('台積電')
@@ -94,9 +102,11 @@ describe('StockCommand Tests', () => {
 
     expect(searchStockTickerWithAI).not.toHaveBeenCalled()
     expect(quoteSpy).toHaveBeenCalledWith('MU')
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.objectContaining({
-      embeds: expect.any(Array)
-    }))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.any(Array)
+      })
+    )
   })
 
   test('should resolve Taiwanese stock nickname via lookupStockTicker and NICKNAME_MAP successfully', async () => {
@@ -121,9 +131,11 @@ describe('StockCommand Tests', () => {
     await stockCommand.execute(mockMessage, ['GG'])
 
     expect(quoteSpy).toHaveBeenCalledWith('2330.TW')
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.objectContaining({
-      embeds: expect.any(Array)
-    }))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.any(Array)
+      })
+    )
 
     const embed = mockMessage.reply.mock.calls[0][0].embeds[0]
     expect(embed.data.title).toContain('台積電')
@@ -153,10 +165,12 @@ describe('StockCommand Tests', () => {
     expect(searchStockTickerWithAI).toHaveBeenCalledWith('華通')
     expect(mockMessage.reply).toHaveBeenCalledWith(expect.stringContaining('正在搜尋「華通」'))
     expect(quoteSpy).toHaveBeenCalledWith('2313.TW')
-    expect(mockStatusMessage.edit).toHaveBeenCalledWith(expect.objectContaining({
-      content: expect.stringContaining('已找到「華通」的代碼為 `2313.TW`'),
-      embeds: expect.any(Array)
-    }))
+    expect(mockStatusMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('已找到「華通」的代碼為 `2313.TW`'),
+        embeds: expect.any(Array)
+      })
+    )
   })
 
   test('should reply error message if AI fails to resolve ticker', async () => {
@@ -165,8 +179,12 @@ describe('StockCommand Tests', () => {
     await stockCommand.execute(mockMessage, ['找不到的股票'])
 
     expect(searchStockTickerWithAI).toHaveBeenCalledWith('找不到的股票')
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.stringContaining('正在搜尋「找不到的股票」'))
-    expect(mockStatusMessage.edit).toHaveBeenCalledWith(expect.stringContaining('找不到與「找不到的股票」相關的股票代碼'))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.stringContaining('正在搜尋「找不到的股票」')
+    )
+    expect(mockStatusMessage.edit).toHaveBeenCalledWith(
+      expect.stringContaining('找不到與「找不到的股票」相關的股票代碼')
+    )
   })
 
   test('should reply error if stock API returns error', async () => {
@@ -174,7 +192,9 @@ describe('StockCommand Tests', () => {
 
     await stockCommand.execute(mockMessage, ['INVALID'])
 
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.stringContaining('查詢股票「INVALID」時發生錯誤'))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.stringContaining('查詢股票「INVALID」時發生錯誤')
+    )
   })
 
   test('should call getChineseNameWithAI for Taiwanese stocks queried by code', async () => {
@@ -199,9 +219,11 @@ describe('StockCommand Tests', () => {
 
     expect(quoteSpy).toHaveBeenCalledWith('2313.TW')
     expect(getChineseNameWithAI).toHaveBeenCalledWith('2313.TW', 'Compeq Manufacturing Co., Ltd.')
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.objectContaining({
-      embeds: expect.any(Array)
-    }))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.any(Array)
+      })
+    )
 
     const embed = mockMessage.reply.mock.calls[0][0].embeds[0]
     expect(embed.data.title).toContain('華通 / Compeq Manufacturing Co., Ltd.')
@@ -233,10 +255,12 @@ describe('StockCommand Tests', () => {
     expect(searchStockTickerWithYahoo).toHaveBeenCalledWith('泰鼎')
     expect(searchStockTickerWithAI).not.toHaveBeenCalled()
     expect(quoteSpy).toHaveBeenCalledWith('4927.TW')
-    expect(mockStatusMessage.edit).toHaveBeenCalledWith(expect.objectContaining({
-      content: expect.stringContaining('已找到「泰鼎」的代碼為 `4927.TW`'),
-      embeds: expect.any(Array)
-    }))
+    expect(mockStatusMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('已找到「泰鼎」的代碼為 `4927.TW`'),
+        embeds: expect.any(Array)
+      })
+    )
 
     const embed = mockStatusMessage.edit.mock.calls[0][0].embeds[0]
     expect(embed.data.title).toContain('泰鼎-KY / Apex International Co., Ltd.')
@@ -346,9 +370,11 @@ describe('StockCommand Tests', () => {
 
     expect(quoteSpy).toHaveBeenCalledWith('2383.TW')
     expect(fetchStockNameFromYahooPage).toHaveBeenCalledWith('2383.TW')
-    expect(mockMessage.reply).toHaveBeenCalledWith(expect.objectContaining({
-      embeds: expect.any(Array)
-    }))
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.any(Array)
+      })
+    )
 
     const embed = mockMessage.reply.mock.calls[0][0].embeds[0]
     expect(embed.data.title).toContain('台光電 / Elite Material Co., Ltd.')

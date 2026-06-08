@@ -242,12 +242,13 @@ describe('NSFW Embed Features Tests', () => {
 
     await vi.runAllTimersAsync()
 
-    expect(axios.get).toHaveBeenCalledWith('https://m.happymh.com/manga/xielingfuti', expect.any(Object))
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://m.happymh.com/manga/xielingfuti',
+      expect.any(Object)
+    )
     expect(mockMessage.channel.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embeds: expect.arrayContaining([
-          expect.any(Object)
-        ])
+        embeds: expect.arrayContaining([expect.any(Object)])
       })
     )
   })
@@ -276,9 +277,7 @@ describe('NSFW Embed Features Tests', () => {
 
     expect(mockMessage.channel.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embeds: expect.arrayContaining([
-          expect.any(Object)
-        ])
+        embeds: expect.arrayContaining([expect.any(Object)])
       })
     )
 
@@ -311,9 +310,7 @@ describe('NSFW Embed Features Tests', () => {
 
     expect(mockMessage.channel.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embeds: expect.arrayContaining([
-          expect.any(Object)
-        ])
+        embeds: expect.arrayContaining([expect.any(Object)])
       })
     )
 
@@ -350,7 +347,11 @@ describe('NSFW Embed Features Tests', () => {
     await vi.runAllTimersAsync()
 
     expect(axios.get).toHaveBeenCalledTimes(2)
-    expect(axios.get).toHaveBeenNthCalledWith(1, 'https://m.happymh.com/manga/xielingfuti', expect.any(Object))
+    expect(axios.get).toHaveBeenNthCalledWith(
+      1,
+      'https://m.happymh.com/manga/xielingfuti',
+      expect.any(Object)
+    )
     expect(axios.get).toHaveBeenNthCalledWith(
       2,
       'https://translate.google.com/translate?sl=auto&tl=zh-TW&u=https%3A%2F%2Fm.happymh.com%2Fmanga%2Fxielingfuti',
