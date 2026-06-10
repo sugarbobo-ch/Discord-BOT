@@ -10,7 +10,11 @@ import {
   getApiKeys,
   executeGenAI,
   isPotentialStockQuery,
-  getNeutralLoadingStatus
+  getNeutralLoadingStatus,
+  shouldSkipTypoCheck,
+  isStrictLocalTypoCheck,
+  typoCooldownMap,
+  chatCooldownMap
 } from '../../src/utils/gemini'
 import { getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
@@ -54,6 +58,8 @@ describe('Gemini Utility Tests', () => {
       regularMarketPrice: 600,
       currency: 'TWD'
     } as any)
+    typoCooldownMap.clear()
+    chatCooldownMap.clear()
   })
 
   test('checkImageNSFW should return false and reason when image is safe', async () => {
@@ -341,7 +347,7 @@ describe('Gemini Utility Tests', () => {
           content: {
             parts: [
               {
-                text: '又打錯字了，是「應該」不是「因該」啦！'
+                text: '{"isTypo": true, "roast": "又打錯字了，是「應該」不是「因該」啦！"}'
               }
             ]
           }
@@ -349,8 +355,73 @@ describe('Gemini Utility Tests', () => {
       ]
     })
 
-    const roast = await roastTypo('因該是這樣吧', '因該', 'guild_123')
-    expect(roast).toBe('又打錯字了，是「應該」不是「因該」啦！')
+    const result = await roastTypo('因該是這樣吧', '因該', 'guild_123')
+    expect(result).toEqual({
+      isTypo: true,
+      roast: '又打錯字了，是「應該」不是「因該」啦！'
+    })
+  })
+
+  test('roastTypo should return isTypo false when AI determines it is correct usage', async () => {
+    mockGenerateContent.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"isTypo": false, "roast": null}'
+              }
+            ]
+          }
+        }
+      ]
+    })
+
+    const result = await roastTypo('行政院部會官員', '部會', 'guild_123')
+    expect(result).toEqual({
+      isTypo: false,
+      roast: null
+    })
+  })
+
+  describe('shouldSkipTypoCheck', () => {
+    test('should skip when typo is inside code block', () => {
+      expect(shouldSkipTypoCheck('```\nconst x = "因該"\n```', '因該')).toBe(true)
+      expect(shouldSkipTypoCheck('`因該` 是錯字', '因該')).toBe(true)
+    })
+
+    test('should skip when typo is inside URL', () => {
+      expect(shouldSkipTypoCheck('請看 https://example.com/因該 網頁', '因該')).toBe(true)
+    })
+
+    test('should skip when typo is inside quote block', () => {
+      expect(shouldSkipTypoCheck('> 他說因該是這樣', '因該')).toBe(true)
+    })
+
+    test('should not skip when typo is in normal content', () => {
+      expect(shouldSkipTypoCheck('今天因該會下雨吧', '因該')).toBe(false)
+    })
+  })
+
+  describe('isStrictLocalTypoCheck', () => {
+    test('should return false for correct usage patterns like 因為該', () => {
+      expect(isStrictLocalTypoCheck('因為該公司倒閉了')).toBe(false)
+      expect(isStrictLocalTypoCheck('這主要是因為該專案已結束')).toBe(false)
+    })
+
+    test('should return false for discussion about typo', () => {
+      expect(isStrictLocalTypoCheck('「因該」是錯字啦')).toBe(false)
+      expect(isStrictLocalTypoCheck('你打成因該了')).toBe(false)
+    })
+
+    test('should return false when followed by a classifier or noun', () => {
+      expect(isStrictLocalTypoCheck('因該字已被廢除')).toBe(false)
+      expect(isStrictLocalTypoCheck('因該案已進入司法程序')).toBe(false)
+    })
+
+    test('should return true for typical typo', () => {
+      expect(isStrictLocalTypoCheck('我因該會去')).toBe(true)
+    })
   })
 
   test('chatWithBobo should block prompt injection attempts', async () => {
