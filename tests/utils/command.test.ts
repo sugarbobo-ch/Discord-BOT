@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { checkPrefix, checkMentions, checkEmoji, getCommandName } from '../../src/utils/command'
+import { checkPrefix, checkMentions, checkEmoji, getCommandName, normalizeMessageContent } from '../../src/utils/command'
 
 const mockMessage = (content: string) =>
   ({
@@ -8,6 +8,24 @@ const mockMessage = (content: string) =>
   }) as any
 
 describe('Command Utility Tests', () => {
+  describe('normalizeMessageContent', () => {
+    test('should convert full-width exclamation mark to half-width', () => {
+      expect(normalizeMessageContent('！bobo')).toBe('!bobo')
+      expect(normalizeMessageContent('！stock 2330')).toBe('!stock 2330')
+    })
+
+    test('should convert full-width spaces to half-width spaces for command messages', () => {
+      expect(normalizeMessageContent('！bobo　2330')).toBe('!bobo 2330')
+      expect(normalizeMessageContent('!add　cmd　text')).toBe('!add cmd text')
+      expect(normalizeMessageContent('/setting　enable')).toBe('/setting enable')
+    })
+
+    test('should not change non-command messages', () => {
+      expect(normalizeMessageContent('哈囉！我是波波。')).toBe('哈囉！我是波波。')
+      expect(normalizeMessageContent('這是一隻　小貓')).toBe('這是一隻　小貓')
+    })
+  })
+
   describe('checkPrefix', () => {
     test('should return true for messages starting with !, ！, or /', () => {
       expect(checkPrefix(mockMessage('!help'))).toBe(true)

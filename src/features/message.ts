@@ -1,7 +1,7 @@
 import { Message, AttachmentBuilder, EmbedBuilder, TextChannel } from 'discord.js'
 import * as fileManager from '../utils/file'
 import { clientManager } from '../utils/client'
-import { checkPrefix, checkMentions, checkEmoji, getCommandName } from '../utils/command'
+import { checkPrefix, checkMentions, checkEmoji, getCommandName, normalizeMessageContent } from '../utils/command'
 import { getDb } from '../utils/db'
 import { checkImageNSFW } from '../utils/gemini'
 import path from 'path'
@@ -9,7 +9,7 @@ import fs from 'fs'
 
 import { commandRegistry } from '../utils/registry'
 
-export { checkPrefix, checkMentions, checkEmoji, getCommandName }
+export { checkPrefix, checkMentions, checkEmoji, getCommandName, normalizeMessageContent }
 
 const keywords = [
   'add',

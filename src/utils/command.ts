@@ -1,5 +1,21 @@
 import { Message } from 'discord.js'
 
+/**
+ * 統一正規化訊息內容，將全形驚嘆號與全形空白轉換為半形
+ */
+export const normalizeMessageContent = (content: string): string => {
+  if (!content) return content
+  const firstChar = content.charAt(0)
+  if (firstChar === '！' || firstChar === '!' || firstChar === '/') {
+    let normalized = content
+    if (firstChar === '！') {
+      normalized = '!' + normalized.substring(1)
+    }
+    return normalized.replace(/　/g, ' ')
+  }
+  return content
+}
+
 export const checkPrefix = (message: Message): boolean => {
   const firstChar = message.content.charAt(0)
   return (

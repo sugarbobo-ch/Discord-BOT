@@ -147,6 +147,9 @@ client.on('messageCreate', async (message: Message) => {
     return
   }
 
+  // 統一在此處處理全形驚嘆號與全形空白的正規化
+  message.content = messageCtrl.normalizeMessageContent(message.content)
+
   let result = messageCtrl.checkPrefix(message)
   if (!result) {
     // 檢查是否直接 tag / mention 機器人，或是回覆機器人的訊息 (即便回覆時關閉了 ping 依然觸發)
