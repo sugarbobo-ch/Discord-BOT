@@ -6,7 +6,8 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder
+  EmbedBuilder,
+  MessageFlags
 } from 'discord.js'
 import auth from '../config/auth.json'
 import * as messageCtrl from './features/message'
@@ -233,7 +234,7 @@ client.on('interactionCreate', async interaction => {
       const { commandName, guildId } = interaction
       if (commandName === '設定') {
         if (!guildId) {
-          await interaction.reply({ content: '❌ 此設定只能在伺服器中使用。', ephemeral: true })
+          await interaction.reply({ content: '❌ 此設定只能在伺服器中使用。', flags: MessageFlags.Ephemeral })
           return
         }
 
@@ -246,7 +247,7 @@ client.on('interactionCreate', async interaction => {
         ) {
           await interaction.reply({
             content: '❌ 只有管理員或擁有「管理伺服器」權限的使用者才能使用此指令。',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           })
           return
         }
@@ -371,34 +372,34 @@ client.on('interactionCreate', async interaction => {
               ? searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
               : ''
             if (!profile) {
-              await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, ephemeral: true })
+              await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, flags: MessageFlags.Ephemeral })
             } else {
-              await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, ephemeral: true })
+              await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, flags: MessageFlags.Ephemeral })
             }
           } else if (subcommand === '清除') {
             const memory = getMemory()
             await memory.deleteAll({ userId })
-            await interaction.reply({ content: `🧹 長期記憶已成功清除！`, ephemeral: true })
+            await interaction.reply({ content: `🧹 長期記憶已成功清除！`, flags: MessageFlags.Ephemeral })
           } else if (subcommand === '設定') {
             const content = interaction.options.getString('內容')?.trim()
             if (!content) {
-              await interaction.reply({ content: `❌ 請提供記憶內容。`, ephemeral: true })
+              await interaction.reply({ content: `❌ 請提供記憶內容。`, flags: MessageFlags.Ephemeral })
               return
             }
             const memory = getMemory()
             await memory.deleteAll({ userId })
             await memory.add(content, { userId })
-            await interaction.reply({ content: `✍️ 長期記憶已設定為：\n${content}`, ephemeral: true })
+            await interaction.reply({ content: `✍️ 長期記憶已設定為：\n${content}`, flags: MessageFlags.Ephemeral })
           } else if (subcommand === '開啟') {
             setUserMemorySetting(userId, true)
-            await interaction.reply({ content: `🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`, ephemeral: true })
+            await interaction.reply({ content: `🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`, flags: MessageFlags.Ephemeral })
           } else if (subcommand === '關閉') {
             setUserMemorySetting(userId, false)
-            await interaction.reply({ content: `🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`, ephemeral: true })
+            await interaction.reply({ content: `🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`, flags: MessageFlags.Ephemeral })
           }
         } catch (err: any) {
           console.error('Error handling slash memory command:', err)
-          await interaction.reply({ content: `❌ 處理記憶時發生錯誤：${err.message}`, ephemeral: true })
+          await interaction.reply({ content: `❌ 處理記憶時發生錯誤：${err.message}`, flags: MessageFlags.Ephemeral })
         }
       } else if (commandName === '我的記憶') {
         const userId = interaction.user.id
@@ -410,13 +411,13 @@ client.on('interactionCreate', async interaction => {
             ? searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
             : ''
           if (!profile) {
-            await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, ephemeral: true })
+            await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, flags: MessageFlags.Ephemeral })
           } else {
-            await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, ephemeral: true })
+            await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, flags: MessageFlags.Ephemeral })
           }
         } catch (err: any) {
           console.error('Error handling slash view memory command:', err)
-          await interaction.reply({ content: `❌ 讀取記憶時發生錯誤：${err.message}`, ephemeral: true })
+          await interaction.reply({ content: `❌ 讀取記憶時發生錯誤：${err.message}`, flags: MessageFlags.Ephemeral })
         }
       }
       return
@@ -426,7 +427,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
       const { customId, guildId } = interaction
       if (!guildId) {
-        await interaction.reply({ content: '❌ 此設定只能在伺服器中使用。', ephemeral: true })
+        await interaction.reply({ content: '❌ 此設定只能在伺服器中使用。', flags: MessageFlags.Ephemeral })
         return
       }
 
@@ -439,7 +440,7 @@ client.on('interactionCreate', async interaction => {
       ) {
         await interaction.reply({
           content: '❌ 你沒有權限更改此設定 (需要管理伺服器權限)。',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         })
         return
       }
@@ -471,7 +472,7 @@ client.on('interactionCreate', async interaction => {
       if (interaction.isRepliable()) {
         await interaction.reply({
           content: '❌ 執行指令時發生內部錯誤，請聯絡開發者。',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         })
       }
     } catch (replyError) {
