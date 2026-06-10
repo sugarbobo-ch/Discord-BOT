@@ -2,7 +2,28 @@ import { describe, test, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { MemoryCommand } from '../../src/commands/memory'
 import { CustomCommand } from '../../src/commands/custom'
 import { commandRegistry } from '../../src/utils/registry'
-import { getDb, setUserMemory, getUserMemory, getUserMemorySetting, setUserMemorySetting } from '../../src/utils/db'
+import { getDb, getUserMemorySetting, setUserMemorySetting } from '../../src/utils/db'
+
+// Mock mem0
+const { mockAdd, mockSearch, mockGetAll, mockDeleteAll } = vi.hoisted(() => {
+  return {
+    mockAdd: vi.fn(),
+    mockSearch: vi.fn(),
+    mockGetAll: vi.fn().mockResolvedValue({ results: [] }),
+    mockDeleteAll: vi.fn()
+  }
+})
+
+vi.mock('../../src/utils/gemini/mem0', () => {
+  return {
+    getMemory: () => ({
+      add: mockAdd,
+      search: mockSearch,
+      getAll: mockGetAll,
+      deleteAll: mockDeleteAll
+    })
+  }
+})
 
 describe('MemoryCommand Tests', () => {
   let memoryCommand: MemoryCommand
@@ -31,8 +52,7 @@ describe('MemoryCommand Tests', () => {
   })
 
   test('should show empty message if no memory exists', async () => {
-    // Ensure database is clean for this user
-    db.prepare('DELETE FROM user_memories WHERE user_id = ?').run(mockMessage.author.id)
+    mockGetAll.mockResolvedValueOnce({ results: [] })
 
     mockMessage.content = '!記憶 查看'
     await memoryCommand.execute(mockMessage, ['查看'])
@@ -43,7 +63,12 @@ describe('MemoryCommand Tests', () => {
   })
 
   test('should show user memory if it exists', async () => {
-    setUserMemory(mockMessage.author.id, '- Likes coding in TypeScript\n- Loves cats')
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: '1', memory: 'Likes coding in TypeScript' },
+        { id: '2', memory: 'Loves cats' }
+      ]
+    })
 
     mockMessage.content = '!記憶 查看'
     await memoryCommand.execute(mockMessage, ['查看'])
@@ -51,13 +76,15 @@ describe('MemoryCommand Tests', () => {
     expect(mockMessage.reply).toHaveBeenCalledWith(
       expect.stringContaining('Likes coding in TypeScript')
     )
-
-    // Cleanup
-    db.prepare('DELETE FROM user_memories WHERE user_id = ?').run(mockMessage.author.id)
   })
 
   test('should show user memory via !我的記憶 alias', async () => {
-    setUserMemory(mockMessage.author.id, '- Likes coding in TypeScript\n- Loves cats')
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: '1', memory: 'Likes coding in TypeScript' },
+        { id: '2', memory: 'Loves cats' }
+      ]
+    })
 
     mockMessage.content = '!我的記憶'
     await memoryCommand.execute(mockMessage, [])
@@ -65,21 +92,16 @@ describe('MemoryCommand Tests', () => {
     expect(mockMessage.reply).toHaveBeenCalledWith(
       expect.stringContaining('Likes coding in TypeScript')
     )
-
-    // Cleanup
-    db.prepare('DELETE FROM user_memories WHERE user_id = ?').run(mockMessage.author.id)
   })
 
   test('should clear user memory successfully', async () => {
-    setUserMemory(mockMessage.author.id, '- Temp memory')
-
     mockMessage.content = '!記憶 清除'
     await memoryCommand.execute(mockMessage, ['清除'])
 
     expect(mockMessage.reply).toHaveBeenCalledWith(
       expect.stringContaining('長期記憶已成功清除')
     )
-    expect(getUserMemory(mockMessage.author.id)).toBe('')
+    expect(mockDeleteAll).toHaveBeenCalledWith({ userId: mockMessage.author.id })
   })
 
   test('should set user memory successfully', async () => {
@@ -89,10 +111,8 @@ describe('MemoryCommand Tests', () => {
     expect(mockMessage.reply).toHaveBeenCalledWith(
       expect.stringContaining('長期記憶已設定為')
     )
-    expect(getUserMemory(mockMessage.author.id)).toBe('我是個喜歡吃拉麵的人。')
-
-    // Cleanup
-    db.prepare('DELETE FROM user_memories WHERE user_id = ?').run(mockMessage.author.id)
+    expect(mockDeleteAll).toHaveBeenCalledWith({ userId: mockMessage.author.id })
+    expect(mockAdd).toHaveBeenCalledWith('我是個喜歡吃拉麵的人。', { userId: mockMessage.author.id })
   })
 
   test('should enable memory setting successfully via subcommands', async () => {
@@ -149,3 +169,4 @@ describe('MemoryCommand Tests', () => {
     )
   })
 })
+

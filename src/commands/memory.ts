@@ -1,6 +1,7 @@
 import { Message } from 'discord.js'
 import { Command } from './command.interface'
-import { getUserMemory, setUserMemory, getUserMemorySetting, setUserMemorySetting } from '../utils/db'
+import { getUserMemorySetting, setUserMemorySetting } from '../utils/db'
+import { getMemory } from '../utils/gemini/mem0'
 
 export class MemoryCommand implements Command {
   public names = ['記憶', 'memory', '我的記憶']
@@ -26,32 +27,46 @@ export class MemoryCommand implements Command {
       return
     }
 
-    if (subcommand === '查看' || subcommand === 'view' || subcommand === 'show') {
-      const profile = getUserMemory(userId)
-      if (!profile) {
-        await message.reply(`🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`)
+    try {
+      if (subcommand === '查看' || subcommand === 'view' || subcommand === 'show') {
+        const memory = getMemory()
+        const searchRes = await memory.getAll({ filters: { user_id: userId } })
+        const profile = searchRes && searchRes.results && searchRes.results.length > 0
+          ? searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
+          : ''
+
+        if (!profile) {
+          await message.reply(`🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`)
+        } else {
+          await message.reply(`🧠 **波波對「${username}」的長期記憶**：\n${profile}`)
+        }
+      } else if (subcommand === '清除' || subcommand === 'clear') {
+        const memory = getMemory()
+        await memory.deleteAll({ userId })
+        await message.reply(`🧹 長期記憶已成功清除！`)
+      } else if (subcommand === '設定' || subcommand === 'set') {
+        const content = args.slice(1).join(' ').trim()
+        if (!content) {
+          await message.reply(`❌ 請提供記憶內容。格式：\`!記憶 設定 <內容>\``)
+          return
+        }
+        const memory = getMemory()
+        await memory.deleteAll({ userId })
+        await memory.add(content, { userId })
+        await message.reply(`✍️ 長期記憶已設定為：\n${content}`)
+      } else if (subcommand === '開啟' || subcommand === 'enable') {
+        setUserMemorySetting(userId, true)
+        await message.reply(`🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`)
+      } else if (subcommand === '關閉' || subcommand === 'disable') {
+        setUserMemorySetting(userId, false)
+        await message.reply(`🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`)
       } else {
-        await message.reply(`🧠 **波波對「${username}」的長期記憶**：\n${profile}`)
+        await message.reply(usageInstructions)
       }
-    } else if (subcommand === '清除' || subcommand === 'clear') {
-      setUserMemory(userId, '')
-      await message.reply(`🧹 長期記憶已成功清除！`)
-    } else if (subcommand === '設定' || subcommand === 'set') {
-      const content = args.slice(1).join(' ').trim()
-      if (!content) {
-        await message.reply(`❌ 請提供記憶內容。格式：\`!記憶 設定 <內容>\``)
-        return
-      }
-      setUserMemory(userId, content)
-      await message.reply(`✍️ 長期記憶已設定為：\n${content}`)
-    } else if (subcommand === '開啟' || subcommand === 'enable') {
-      setUserMemorySetting(userId, true)
-      await message.reply(`🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`)
-    } else if (subcommand === '關閉' || subcommand === 'disable') {
-      setUserMemorySetting(userId, false)
-      await message.reply(`🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`)
-    } else {
-      await message.reply(usageInstructions)
+    } catch (err: any) {
+      console.error('Error handling memory command:', err)
+      await message.reply(`❌ 處理記憶指令時發生錯誤：${err.message}`)
     }
   }
 }
+

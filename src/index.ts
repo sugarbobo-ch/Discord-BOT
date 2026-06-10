@@ -24,7 +24,7 @@ import { SettingCommand } from './commands/setting'
 import { FeatureCommand } from './commands/feature'
 import { StockCommand } from './commands/stock'
 import { MemoryCommand } from './commands/memory'
-import { roastTypo, shouldSkipTypoCheck, isStrictLocalTypoCheck } from './utils/gemini'
+import { roastTypo, shouldSkipTypoCheck, isStrictLocalTypoCheck, getMemory } from './utils/gemini'
 import { checkAndFixTwitterEmbed } from './features/twitter'
 import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
 import {
@@ -363,39 +363,60 @@ client.on('interactionCreate', async interaction => {
         const userId = interaction.user.id
         const username = (interaction.member as any)?.displayName || interaction.user.username
 
-        if (subcommand === '查看') {
-          const profile = getUserMemory(userId)
+        try {
+          if (subcommand === '查看') {
+            const memory = getMemory()
+            const searchRes = await memory.getAll({ filters: { user_id: userId } })
+            const profile = searchRes && searchRes.results && searchRes.results.length > 0
+              ? searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
+              : ''
+            if (!profile) {
+              await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, ephemeral: true })
+            } else {
+              await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, ephemeral: true })
+            }
+          } else if (subcommand === '清除') {
+            const memory = getMemory()
+            await memory.deleteAll({ userId })
+            await interaction.reply({ content: `🧹 長期記憶已成功清除！`, ephemeral: true })
+          } else if (subcommand === '設定') {
+            const content = interaction.options.getString('內容')?.trim()
+            if (!content) {
+              await interaction.reply({ content: `❌ 請提供記憶內容。`, ephemeral: true })
+              return
+            }
+            const memory = getMemory()
+            await memory.deleteAll({ userId })
+            await memory.add(content, { userId })
+            await interaction.reply({ content: `✍️ 長期記憶已設定為：\n${content}`, ephemeral: true })
+          } else if (subcommand === '開啟') {
+            setUserMemorySetting(userId, true)
+            await interaction.reply({ content: `🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`, ephemeral: true })
+          } else if (subcommand === '關閉') {
+            setUserMemorySetting(userId, false)
+            await interaction.reply({ content: `🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`, ephemeral: true })
+          }
+        } catch (err: any) {
+          console.error('Error handling slash memory command:', err)
+          await interaction.reply({ content: `❌ 處理記憶時發生錯誤：${err.message}`, ephemeral: true })
+        }
+      } else if (commandName === '我的記憶') {
+        const userId = interaction.user.id
+        const username = (interaction.member as any)?.displayName || interaction.user.username
+        try {
+          const memory = getMemory()
+          const searchRes = await memory.getAll({ filters: { user_id: userId } })
+          const profile = searchRes && searchRes.results && searchRes.results.length > 0
+            ? searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
+            : ''
           if (!profile) {
             await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, ephemeral: true })
           } else {
             await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, ephemeral: true })
           }
-        } else if (subcommand === '清除') {
-          setUserMemory(userId, '')
-          await interaction.reply({ content: `🧹 長期記憶已成功清除！`, ephemeral: true })
-        } else if (subcommand === '設定') {
-          const content = interaction.options.getString('內容')?.trim()
-          if (!content) {
-            await interaction.reply({ content: `❌ 請提供記憶內容。`, ephemeral: true })
-            return
-          }
-          setUserMemory(userId, content)
-          await interaction.reply({ content: `✍️ 長期記憶已設定為：\n${content}`, ephemeral: true })
-        } else if (subcommand === '開啟') {
-          setUserMemorySetting(userId, true)
-          await interaction.reply({ content: `🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`, ephemeral: true })
-        } else if (subcommand === '關閉') {
-          setUserMemorySetting(userId, false)
-          await interaction.reply({ content: `🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`, ephemeral: true })
-        }
-      } else if (commandName === '我的記憶') {
-        const userId = interaction.user.id
-        const username = (interaction.member as any)?.displayName || interaction.user.username
-        const profile = getUserMemory(userId)
-        if (!profile) {
-          await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, ephemeral: true })
-        } else {
-          await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, ephemeral: true })
+        } catch (err: any) {
+          console.error('Error handling slash view memory command:', err)
+          await interaction.reply({ content: `❌ 讀取記憶時發生錯誤：${err.message}`, ephemeral: true })
         }
       }
       return

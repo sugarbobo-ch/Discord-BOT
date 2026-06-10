@@ -21,6 +21,27 @@ vi.mock('@google/genai', async importOriginal => {
   }
 })
 
+// Mock mem0
+const { mockAdd, mockSearch, mockGetAll, mockDeleteAll } = vi.hoisted(() => {
+  return {
+    mockAdd: vi.fn(),
+    mockSearch: vi.fn(),
+    mockGetAll: vi.fn(),
+    mockDeleteAll: vi.fn()
+  }
+})
+
+vi.mock('../../src/utils/gemini/mem0', () => {
+  return {
+    getMemory: () => ({
+      add: mockAdd,
+      search: mockSearch,
+      getAll: mockGetAll,
+      deleteAll: mockDeleteAll
+    })
+  }
+})
+
 describe('Memory System Utilities', () => {
   let db: any
 
@@ -123,19 +144,14 @@ describe('Memory System Utilities', () => {
     })
   })
 
-  describe('Long-term Memory Reflection in Background', () => {
+  describe('Long-term Memory Reflection via Mem0 in Background', () => {
     beforeEach(() => {
       vi.resetAllMocks()
       process.env.GEMINI_API_KEY = 'test_key'
     })
 
-    test('should run LLM reflection and update memory if there are changes', async () => {
+    test('should delegate memory addition to Mem0 with correct user scoping', async () => {
       const testUserId = 'test_user_ref_999'
-      setUserMemory(testUserId, '- Likes TypeScript')
-
-      mockGenerateContent.mockResolvedValueOnce({
-        candidates: [{ content: { parts: [{ text: '- Likes TypeScript\n- Loves cats' }] } }]
-      })
 
       await updateMemoryInBackground(
         testUserId,
@@ -145,39 +161,15 @@ describe('Memory System Utilities', () => {
         undefined
       )
 
-      expect(mockGenerateContent).toHaveBeenCalled()
-      expect(getUserMemory(testUserId)).toContain('Loves cats')
-
-      // Cleanup
-      db.prepare('DELETE FROM user_memories WHERE user_id = ?').run(testUserId)
-    })
-
-    test('should not update memory if LLM returns no change', async () => {
-      const testUserId = 'test_user_ref_888'
-      setUserMemory(testUserId, '- Likes TypeScript')
-
-      mockGenerateContent.mockResolvedValueOnce({
-        candidates: [{ content: { parts: [{ text: '無變化' }] } }]
-      })
-
-      await updateMemoryInBackground(
-        testUserId,
-        'TestUser',
-        'Just saying hi.',
-        'Hello!',
-        undefined
+      expect(mockAdd).toHaveBeenCalledTimes(1)
+      expect(mockAdd).toHaveBeenCalledWith(
+        expect.stringContaining('[發言者 (目標對象)] TestUser: "I love cats so much!"'),
+        { userId: testUserId }
       )
-
-      expect(mockGenerateContent).toHaveBeenCalled()
-      expect(getUserMemory(testUserId)).toBe('- Likes TypeScript')
-
-      // Cleanup
-      db.prepare('DELETE FROM user_memories WHERE user_id = ?').run(testUserId)
     })
 
     test('should not run reflection if user memory setting is disabled', async () => {
       const testUserId = 'test_user_ref_777'
-      setUserMemory(testUserId, '- Likes TypeScript')
       setUserMemorySetting(testUserId, false)
 
       await updateMemoryInBackground(
@@ -188,11 +180,11 @@ describe('Memory System Utilities', () => {
         undefined
       )
 
-      expect(mockGenerateContent).not.toHaveBeenCalled()
-      expect(getUserMemory(testUserId)).toBe('- Likes TypeScript')
+      expect(mockAdd).not.toHaveBeenCalled()
 
       // Cleanup
       db.prepare('DELETE FROM user_memories WHERE user_id = ?').run(testUserId)
     })
   })
 })
+

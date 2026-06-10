@@ -22,7 +22,8 @@ import {
   getProgressStatus,
   getStockPriceTool
 } from './stock'
-import { getUserMemory, getUserMemorySetting } from '../db'
+import { getUserMemorySetting } from '../db'
+import { getMemory } from './mem0'
 
 
 // Cooldown 限制 (毫秒)
@@ -239,7 +240,18 @@ export const chatWithBobo = async (
   }
 
   const isMemoryEnabled = getUserMemorySetting(userId)
-  const userLongTermMemory = isMemoryEnabled ? getUserMemory(userId) : ''
+  let userLongTermMemory = ''
+  if (isMemoryEnabled) {
+    try {
+      const memory = getMemory()
+      const searchRes = await memory.search(prompt, { filters: { user_id: userId } })
+      if (searchRes && searchRes.results && searchRes.results.length > 0) {
+        userLongTermMemory = searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
+      }
+    } catch (err: any) {
+      console.warn('[Mem0 Search Failed]:', err.message)
+    }
+  }
   let memoryPrompt = ''
   if (userLongTermMemory) {
     memoryPrompt = `\n\n【關於當前說話者(${authorName || userId})的已知長期記憶與個性特徵】：\n${userLongTermMemory}\n請在對話中自然且適當地運用這些背景知識，但「不要」刻意、生硬地對使用者複述這些記憶條目。`

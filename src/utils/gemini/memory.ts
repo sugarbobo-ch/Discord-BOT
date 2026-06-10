@@ -1,6 +1,7 @@
 import { Message } from 'discord.js'
-import { getUserMemory, setUserMemory, getUserMemorySetting } from '../db'
-import { executeGenAI, MODEL_NAME, getResponseText } from './core'
+import { getUserMemorySetting } from '../db'
+import { getMemory } from './mem0'
+
 
 /**
  * 獲取混合式對話上下文（最近訊息 + 顯式回覆鏈）
@@ -73,52 +74,16 @@ export async function updateMemoryInBackground(
     return
   }
 
-  const currentMemory = getUserMemory(targetUserId)
-
-  // 建立對話內容
-  let dialogueContext = ''
-  if (repliedMsg) {
-    dialogueContext += `[被回覆者] ${repliedMsg.author}: "${repliedMsg.content}"\n`
-  }
-  dialogueContext += `[發言者 (目標對象)] ${targetUserName}: "${userMessage}"\n`
+  // 建立對話內容 (僅包含發言者與AI的回覆，確保別人的垃圾話不會污染 A 網友的專屬記憶庫)
+  let dialogueContext = `[發言者 (目標對象)] ${targetUserName}: "${userMessage}"\n`
   dialogueContext += `[AI 回覆]: "${aiResponse}"`
 
-  const reflectionPrompt = `你是一個記憶分析助手。
-我們現在「只」想提取並更新使用者「${targetUserName}」的個人特徵與長期記憶。
-
-以下是「${targetUserName}」目前的長期記憶 Profile：
-"""
-${currentMemory || '目前尚無記憶。'}
-"""
-
-以下是最新的一輪對話上下文（請特別注意誰是 [發言者]）：
-"""
-${dialogueContext}
-"""
-
-請分析上述對話，並遵循以下「嚴格規則」：
-1. 【重要】只能分析 [發言者 (目標對象)] ${targetUserName} 的偏好、個性、職業、生活狀態或態度。
-2. 【禁止】絕對不能將 [被回覆者] 或 AI 說的話與特徵，誤記到 ${targetUserName} 的 Profile 中。
-   - 範例：如果 [被回覆者] 說「我討厭吃番茄」，而 ${targetUserName} 回覆「我也是」，你可以記下 "${targetUserName} 討厭吃番茄"。
-   - 範例：如果 [被回覆者] 說「我明天要去日本」，${targetUserName} 回覆「祝你一路順風」，你「絕對不能」記下 ${targetUserName} 要去日本。
-3. 結合舊的 Profile 進行增刪修，回傳更新後的繁體中文條列清單。
-4. 若無任何關於 ${targetUserName} 的長期資訊更新，請僅回覆「無變化」。`
-
   try {
-    const response = await executeGenAI(ai =>
-      ai.models.generateContent({
-        model: MODEL_NAME,
-        contents: [{ role: 'user', parts: [{ text: reflectionPrompt }] }]
-      })
-    )
-
-    const reflectionResult = getResponseText(response)?.trim()
-
-    if (reflectionResult && reflectionResult !== '無變化' && reflectionResult.length > 5) {
-      console.log(`[Memory Updated] Target: ${targetUserName} (${targetUserId}) | Profile:\n${reflectionResult}`)
-      setUserMemory(targetUserId, reflectionResult)
-    }
+    const memory = getMemory()
+    await memory.add(dialogueContext, { userId: targetUserId })
+    console.log(`[Memory Updated via Mem0] Target: ${targetUserName} (${targetUserId})`)
   } catch (err: any) {
     console.warn(`[Memory Reflection Failed] User: ${targetUserId} | Error:`, err.message)
   }
 }
+
