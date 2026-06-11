@@ -1,11 +1,16 @@
-import { Message, EmbedBuilder } from 'discord.js'
+import { Message, EmbedBuilder, ChatInputCommandInteraction } from 'discord.js'
 import { Command } from './command.interface'
 
 export class FeatureCommand implements Command {
   public names = ['功能', 'features']
 
-  public execute(message: Message): void {
-    const embed = new EmbedBuilder()
+  public slashData = {
+    name: '功能',
+    description: '介紹這機器人如何使用與其功能列表'
+  }
+
+  private buildEmbed(): EmbedBuilder {
+    return new EmbedBuilder()
       .setTitle('🤖 波波 (Bobo) 機器人功能介紹')
       .setDescription(
         '我是波波，一個多功能又帶點幽默的 Discord 機器人助手！以下是我的主要功能介紹與可用指令列表：'
@@ -92,7 +97,15 @@ export class FeatureCommand implements Command {
       )
       .setFooter({ text: '使用指令時記得在名稱與參數之間加上空白喔！' })
       .setTimestamp()
+  }
 
+  public execute(message: Message, args: string[]): void {
+    const embed = this.buildEmbed()
     message.reply({ embeds: [embed] })
+  }
+
+  public async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const embed = this.buildEmbed()
+    await interaction.reply({ embeds: [embed] })
   }
 }

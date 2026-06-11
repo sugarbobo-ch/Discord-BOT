@@ -173,6 +173,78 @@ async function handleViewMemory(
 export class MemoryCommand implements Command {
   public names = ['記憶', 'memory', '我的記憶']
 
+  public slashData = [
+    {
+      name: '記憶',
+      description: '長期記憶功能管理與查看',
+      options: [
+        {
+          name: '查看',
+          description: '查看波波對你記錄的長期記憶',
+          type: 1, // SUB_COMMAND
+          options: [
+            {
+              name: '排序',
+              description: '排序方式 (新到舊、舊到新、字母)',
+              type: 3, // STRING
+              required: false,
+              choices: [
+                { name: '時間新到舊', value: '新到舊' },
+                { name: '時間舊到新', value: '舊到新' },
+                { name: '字母排序', value: '字母' }
+              ]
+            }
+          ]
+        },
+        {
+          name: '清除',
+          description: '清除波波對你記錄的長期記憶',
+          type: 1 // SUB_COMMAND
+        },
+        {
+          name: '設定',
+          description: '手動設定波波對你的長期記憶',
+          type: 1, // SUB_COMMAND
+          options: [
+            {
+              name: '內容',
+              description: '記憶內容',
+              type: 3, // STRING
+              required: true
+            }
+          ]
+        },
+        {
+          name: '開啟',
+          description: '開啟波波對你的記憶功能',
+          type: 1 // SUB_COMMAND
+        },
+        {
+          name: '關閉',
+          description: '關閉波波對你的記憶功能',
+          type: 1 // SUB_COMMAND
+        }
+      ]
+    },
+    {
+      name: '我的記憶',
+      description: '快速查看波波對你記錄的長期記憶',
+      options: [
+        {
+          name: '排序',
+          description: '排序方式 (新到舊、舊到新、字母)',
+          type: 3, // STRING
+          required: false,
+          choices: [
+            { name: '時間新到舊', value: '新到舊' },
+            { name: '時間舊到新', value: '舊到新' },
+            { name: '字母排序', value: '字母' }
+          ]
+        }
+      ]
+    }
+  ]
+
   public async execute(message: Message, args: string[]): Promise<void> {
     const commandTrigger = message.content.trim().split(/\s+/)[0].substring(1).toLowerCase()
     const isAlias = commandTrigger === '我的記憶'
