@@ -187,7 +187,7 @@ export class MemoryCommand implements Command {
 • \`!記憶 清除\` - 清除波波對你記錄的長期記憶。
 • \`!記憶 設定 <內容>\` - 手動設定波波對你的長期記憶。
 • \`!記憶 開啟\` - 開啟波波對你的記憶功能。
-• \`!記憶 關閉\` - 關閉波波對你的記憶功能.
+• \`!記憶 關閉\` - 關閉波波對你的記憶功能。
 • \`!我的記憶 [排序]\` - 快速查看波波對你記錄的長期記憶。`
 
     if (!subcommand) {
@@ -210,10 +210,16 @@ export class MemoryCommand implements Command {
           await message.reply(`❌ 請提供記憶內容。格式：\`!記憶 設定 <內容>\``)
           return
         }
-        const memory = getMemory()
-        await memory.deleteAll({ userId })
-        await memory.add(content, { userId })
-        await message.reply(`✍️ 長期記憶已設定為：\n${content}`)
+        const statusMessage = await message.reply(`🔍 正在處理並設定長期記憶，請稍候...`)
+        try {
+          const memory = getMemory()
+          await memory.deleteAll({ userId })
+          await memory.add(content, { userId })
+          await statusMessage.edit(`✍️ 長期記憶已設定為：\n${content}`)
+        } catch (err: any) {
+          console.error('Error setting memory:', err)
+          await statusMessage.edit(`❌ 處理記憶指令時發生錯誤：${err.message}`)
+        }
       } else if (subcommand === '開啟' || subcommand === 'enable') {
         console.log('SETTING MEMORY TO TRUE FOR:', userId);
         setUserMemorySetting(userId, true)
@@ -251,10 +257,16 @@ export class MemoryCommand implements Command {
           await interaction.reply({ content: `❌ 請提供記憶內容。`, flags: MessageFlags.Ephemeral })
           return
         }
-        const memory = getMemory()
-        await memory.deleteAll({ userId })
-        await memory.add(content, { userId })
-        await interaction.reply({ content: `✍️ 長期記憶已設定為：\n${content}`, flags: MessageFlags.Ephemeral })
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+        try {
+          const memory = getMemory()
+          await memory.deleteAll({ userId })
+          await memory.add(content, { userId })
+          await interaction.editReply({ content: `✍️ 長期記憶已設定為：\n${content}` })
+        } catch (err: any) {
+          console.error('Error setting memory slash:', err)
+          await interaction.editReply({ content: `❌ 處理記憶時發生錯誤：${err.message}` })
+        }
       } else if (subcommand === '開啟') {
         setUserMemorySetting(userId, true)
         await interaction.reply({ content: `🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`, flags: MessageFlags.Ephemeral })

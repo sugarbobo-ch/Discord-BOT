@@ -161,9 +161,18 @@ describe('MemoryCommand Tests', () => {
 
   test('should set user memory successfully', async () => {
     mockMessage.content = '!記憶 設定 我是個喜歡吃拉麵的人。'
+    
+    const mockEdit = vi.fn().mockResolvedValue(true)
+    mockMessage.reply.mockResolvedValueOnce({
+      edit: mockEdit
+    })
+
     await memoryCommand.execute(mockMessage, ['設定', '我是個喜歡吃拉麵的人。'])
 
     expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.stringContaining('正在處理並設定長期記憶')
+    )
+    expect(mockEdit).toHaveBeenCalledWith(
       expect.stringContaining('長期記憶已設定為')
     )
     expect(mockDeleteAll).toHaveBeenCalledWith({ userId: mockMessage.author.id })
@@ -262,6 +271,46 @@ describe('MemoryCommand Tests', () => {
       expect.objectContaining({
         content: expect.stringContaining('Likes coding in TypeScript')
       })
+    )
+  })
+
+  test('should fall back to channel.send if message.reply throws Unknown Message (50035)', async () => {
+    // Mock error from reply
+    const discordError = new Error('Unknown Message')
+    ;(discordError as any).code = 50035
+    mockMessage.reply.mockRejectedValueOnce(discordError)
+    
+    // Mock channel.send to return a message with edit mock
+    const mockEdit = vi.fn().mockResolvedValue(true)
+    const mockSend = vi.fn().mockResolvedValue({
+      edit: mockEdit
+    })
+    mockMessage.channel = {
+      send: mockSend
+    }
+
+    // Apply the global safety reply wrapper mock to mockMessage
+    const originalReply = mockMessage.reply
+    mockMessage.reply = vi.fn().mockImplementation(async function (options: any) {
+      try {
+        return await originalReply(options)
+      } catch (err: any) {
+        if (err.code === 50035 || err.code === 10008) {
+          return await mockMessage.channel.send(options)
+        }
+        throw err
+      }
+    })
+
+    mockMessage.content = '!記憶 設定 我是個喜歡吃拉麵的人。'
+    await memoryCommand.execute(mockMessage, ['設定', '我是個喜歡吃拉麵的人。'])
+
+    expect(mockMessage.reply).toHaveBeenCalled()
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.stringContaining('正在處理並設定長期記憶')
+    )
+    expect(mockEdit).toHaveBeenCalledWith(
+      expect.stringContaining('長期記憶已設定為')
     )
   })
 })

@@ -175,6 +175,25 @@ client.on('messageCreate', async (message: Message) => {
     return
   }
 
+  // 封裝 message.reply 以進行全域安全性處理（避免原訊息被刪除時崩潰）
+  const originalReply = message.reply.bind(message)
+  message.reply = async function (options: any) {
+    try {
+      return await originalReply(options)
+    } catch (err: any) {
+      if (err.code === 50035 || err.code === 10008) {
+        try {
+          if (message.channel && typeof (message.channel as any).send === 'function') {
+            return await (message.channel as any).send(options)
+          }
+        } catch (sendErr) {
+          console.error('Failed to send fallback channel message:', sendErr)
+        }
+      }
+      throw err
+    }
+  } as any
+
   // 統一在此處處理全形驚嘆號與全形空白的正規化
   message.content = messageCtrl.normalizeMessageContent(message.content)
 
@@ -552,10 +571,16 @@ client.on('interactionCreate', async interaction => {
               await interaction.reply({ content: `❌ 請提供記憶內容。`, flags: MessageFlags.Ephemeral })
               return
             }
-            const memory = getMemory()
-            await memory.deleteAll({ userId })
-            await memory.add(content, { userId })
-            await interaction.reply({ content: `✍️ 長期記憶已設定為：\n${content}`, flags: MessageFlags.Ephemeral })
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+            try {
+              const memory = getMemory()
+              await memory.deleteAll({ userId })
+              await memory.add(content, { userId })
+              await interaction.editReply({ content: `✍️ 長期記憶已設定為：\n${content}` })
+            } catch (err: any) {
+              console.error('Error setting memory slash:', err)
+              await interaction.editReply({ content: `❌ 處理記憶時發生錯誤：${err.message}` })
+            }
           } else if (subcommand === '開啟') {
             setUserMemorySetting(userId, true)
             await interaction.reply({ content: `🟢 長期記憶功能已開啟！波波會開始記住你的個人特徵與偏好喔。`, flags: MessageFlags.Ephemeral })
@@ -565,7 +590,11 @@ client.on('interactionCreate', async interaction => {
           }
         } catch (err: any) {
           console.error('Error handling slash memory command:', err)
-          await interaction.reply({ content: `❌ 處理記憶時發生錯誤：${err.message}`, flags: MessageFlags.Ephemeral })
+          if (!interaction.deferred && !interaction.replied) {
+            await interaction.reply({ content: `❌ 處理記憶時發生錯誤：${err.message}`, flags: MessageFlags.Ephemeral })
+          } else {
+            await interaction.editReply({ content: `❌ 處理記憶時發生錯誤：${err.message}` })
+          }
         }
       } else if (commandName === '我的記憶') {
         const userId = interaction.user.id
