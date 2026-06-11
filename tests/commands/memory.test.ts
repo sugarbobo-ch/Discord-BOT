@@ -38,10 +38,18 @@ describe('MemoryCommand Tests', () => {
     vi.resetAllMocks()
     memoryCommand = new MemoryCommand()
     
+    const mockCollector = {
+      on: vi.fn()
+    }
+    const mockResponse = {
+      createMessageComponentCollector: vi.fn().mockReturnValue(mockCollector),
+      edit: vi.fn().mockResolvedValue(true)
+    }
     mockMessage = {
       content: '!記憶',
       author: { id: 'test_user_cmd_123', username: 'TestUser' },
-      reply: vi.fn().mockResolvedValue(true)
+      member: { displayName: 'TestUser' },
+      reply: vi.fn().mockResolvedValue(mockResponse)
     }
   })
 
@@ -65,33 +73,78 @@ describe('MemoryCommand Tests', () => {
   test('should show user memory if it exists', async () => {
     mockGetAll.mockResolvedValueOnce({
       results: [
-        { id: '1', memory: 'Likes coding in TypeScript' },
-        { id: '2', memory: 'Loves cats' }
+        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Loves cats', created_at: '2026-06-11T12:01:00Z' }
       ]
     })
 
     mockMessage.content = '!記憶 查看'
     await memoryCommand.execute(mockMessage, ['查看'])
 
-    expect(mockMessage.reply).toHaveBeenCalledWith(
-      expect.stringContaining('Likes coding in TypeScript')
-    )
+    expect(mockMessage.reply).toHaveBeenCalled()
+    const callArgs = mockMessage.reply.mock.calls[0][0]
+    expect(callArgs.embeds).toBeDefined()
+    const embed = callArgs.embeds[0]
+    expect(embed.data.title).toBe('🧠 波波對「TestUser」的長期記憶')
+    expect(embed.data.fields).toHaveLength(2)
+    // 預設是新到舊，所以 Loves cats 先
+    expect(embed.data.fields[0].value).toContain('Loves cats')
+    expect(embed.data.fields[1].value).toContain('Likes coding in TypeScript')
   })
 
   test('should show user memory via !我的記憶 alias', async () => {
     mockGetAll.mockResolvedValueOnce({
       results: [
-        { id: '1', memory: 'Likes coding in TypeScript' },
-        { id: '2', memory: 'Loves cats' }
+        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Loves cats', created_at: '2026-06-11T12:01:00Z' }
       ]
     })
 
     mockMessage.content = '!我的記憶'
     await memoryCommand.execute(mockMessage, [])
 
-    expect(mockMessage.reply).toHaveBeenCalledWith(
-      expect.stringContaining('Likes coding in TypeScript')
-    )
+    expect(mockMessage.reply).toHaveBeenCalled()
+    const callArgs = mockMessage.reply.mock.calls[0][0]
+    expect(callArgs.embeds).toBeDefined()
+    const embed = callArgs.embeds[0]
+    expect(embed.data.fields).toHaveLength(2)
+    expect(embed.data.fields[0].value).toContain('Loves cats')
+  })
+
+  test('should sort user memory oldest to newest', async () => {
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Loves cats', created_at: '2026-06-11T12:01:00Z' }
+      ]
+    })
+
+    mockMessage.content = '!記憶 查看 舊到新'
+    await memoryCommand.execute(mockMessage, ['查看', '舊到新'])
+
+    expect(mockMessage.reply).toHaveBeenCalled()
+    const callArgs = mockMessage.reply.mock.calls[0][0]
+    const embed = callArgs.embeds[0]
+    expect(embed.data.fields[0].value).toContain('Likes coding in TypeScript')
+    expect(embed.data.fields[1].value).toContain('Loves cats')
+  })
+
+  test('should sort user memory alphabetically', async () => {
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: '1', memory: 'Banana', created_at: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Apple', created_at: '2026-06-11T12:01:00Z' }
+      ]
+    })
+
+    mockMessage.content = '!記憶 查看 字母'
+    await memoryCommand.execute(mockMessage, ['查看', '字母'])
+
+    expect(mockMessage.reply).toHaveBeenCalled()
+    const callArgs = mockMessage.reply.mock.calls[0][0]
+    const embed = callArgs.embeds[0]
+    expect(embed.data.fields[0].value).toContain('Apple')
+    expect(embed.data.fields[1].value).toContain('Banana')
   })
 
   test('should clear user memory successfully', async () => {
