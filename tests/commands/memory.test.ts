@@ -66,7 +66,9 @@ describe('MemoryCommand Tests', () => {
     await memoryCommand.execute(mockMessage, ['查看'])
 
     expect(mockMessage.reply).toHaveBeenCalledWith(
-      expect.stringContaining('目前沒有關於你的長期記憶')
+      expect.objectContaining({
+        content: expect.stringContaining('目前沒有關於你的長期記憶')
+      })
     )
   })
 
@@ -221,5 +223,45 @@ describe('MemoryCommand Tests', () => {
       expect.stringContaining('使用說明')
     )
   })
-})
 
+  test('should handle copy_all button interaction', async () => {
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' }
+      ]
+    })
+
+    let collectCallback: any
+    const mockCollector = {
+      on: vi.fn().mockImplementation((event, cb) => {
+        if (event === 'collect') {
+          collectCallback = cb
+        }
+      })
+    }
+    const mockResponse = {
+      createMessageComponentCollector: vi.fn().mockReturnValue(mockCollector),
+      edit: vi.fn().mockResolvedValue(true)
+    }
+    mockMessage.reply.mockResolvedValueOnce(mockResponse)
+
+    mockMessage.content = '!記憶 查看'
+    await memoryCommand.execute(mockMessage, ['查看'])
+
+    expect(collectCallback).toBeDefined()
+
+    // Trigger copy_all interaction
+    const mockInteraction = {
+      customId: 'copy_all',
+      user: { id: mockMessage.author.id },
+      reply: vi.fn().mockResolvedValue(true)
+    }
+    await collectCallback(mockInteraction)
+
+    expect(mockInteraction.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('Likes coding in TypeScript')
+      })
+    )
+  })
+})

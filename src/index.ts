@@ -7,7 +7,8 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  MessageFlags
+  MessageFlags,
+  ComponentType
 } from 'discord.js'
 import auth from '../config/auth.json'
 import * as messageCtrl from './features/message'
@@ -86,7 +87,20 @@ client.on('ready', async () => {
             {
               name: '查看',
               description: '查看波波對你記錄的長期記憶',
-              type: 1 // SUB_COMMAND
+              type: 1, // SUB_COMMAND
+              options: [
+                {
+                  name: '排序',
+                  description: '排序方式 (新到舊、舊到新、字母)',
+                  type: 3, // STRING
+                  required: false,
+                  choices: [
+                    { name: '時間新到舊', value: '新到舊' },
+                    { name: '時間舊到新', value: '舊到新' },
+                    { name: '字母排序', value: '字母' }
+                  ]
+                }
+              ]
             },
             {
               name: '清除',
@@ -120,7 +134,20 @@ client.on('ready', async () => {
         },
         {
           name: '我的記憶',
-          description: '快速查看波波對你記錄的長期記憶'
+          description: '快速查看波波對你記錄的長期記憶',
+          options: [
+            {
+              name: '排序',
+              description: '排序方式 (新到舊、舊到新、字母)',
+              type: 3, // STRING
+              required: false,
+              choices: [
+                { name: '時間新到舊', value: '新到舊' },
+                { name: '時間舊到新', value: '舊到新' },
+                { name: '字母排序', value: '字母' }
+              ]
+            }
+          ]
         }
       ]
 
@@ -223,6 +250,128 @@ client.on('messageCreate', async (message: Message) => {
     console.error(error)
   }
 })
+
+/**
+ * 處理斜線指令的長期記憶查看（支援 Embed 與分頁按鈕以及排序）
+ */
+async function handleViewMemory(
+  interaction: any,
+  userId: string,
+  username: string,
+  sortParam: string
+) {
+  const memory = getMemory()
+  const searchRes = await memory.getAll({ filters: { user_id: userId } })
+  const results = searchRes?.results || []
+
+  if (results.length === 0) {
+    await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, flags: MessageFlags.Ephemeral })
+    return
+  }
+
+  let sortLabel = '時間新到舊'
+  if (sortParam === '舊到新') {
+    results.sort((a: any, b: any) => new Date(a.updated_at || a.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime())
+    sortLabel = '時間舊到新'
+  } else if (sortParam === '字母') {
+    results.sort((a: any, b: any) => a.memory.localeCompare(b.memory, 'zh-Hant-TW'))
+    sortLabel = '字母排序'
+  } else {
+    results.sort((a: any, b: any) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime())
+    sortLabel = '時間新到舊'
+  }
+
+  const itemsPerPage = 5
+  const totalPages = Math.ceil(results.length / itemsPerPage)
+  let currentPage = 1
+
+  const generateEmbed = (page: number) => {
+    const startIndex = (page - 1) * itemsPerPage
+    const pageItems = results.slice(startIndex, startIndex + itemsPerPage)
+
+    const embed = new EmbedBuilder()
+      .setColor('#FF9900')
+      .setTitle(`🧠 波波對「${username}」的長期記憶`)
+      .setDescription(`目前總共記住了 **${results.length}** 條記憶 (排序方式: \`${sortLabel}\`)`)
+      .setFooter({ text: `第 ${page} / ${totalPages} 頁 • 記憶資料庫` })
+      .setTimestamp()
+
+    pageItems.forEach((item: any, index: number) => {
+      const globalIndex = startIndex + index + 1
+      let timeStr = ''
+      const rawTime = item.updated_at || item.created_at
+      if (rawTime) {
+        const d = new Date(rawTime)
+        if (!isNaN(d.getTime())) {
+          timeStr = ` (更新於: ${d.toLocaleDateString('zh-TW')})`
+        }
+      }
+      embed.addFields({
+        name: `#${globalIndex}${timeStr}`,
+        value: `• ${item.memory}`,
+        inline: false
+      })
+    })
+
+    return embed
+  }
+
+  const generateButtons = (page: number) => {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('prev_page')
+        .setLabel('◀️ 上一頁')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page === 1),
+      new ButtonBuilder()
+        .setCustomId('next_page')
+        .setLabel('下一頁 ▶️')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page === totalPages)
+    )
+    return row
+  }
+
+  const response = await interaction.reply({
+    embeds: [generateEmbed(currentPage)],
+    components: totalPages > 1 ? [generateButtons(currentPage)] : [],
+    flags: MessageFlags.Ephemeral,
+    fetchReply: true
+  })
+
+  if (totalPages > 1) {
+    const collector = response.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 60000,
+      filter: (i: any) => i.user.id === interaction.user.id
+    })
+
+    collector.on('collect', async (i: any) => {
+      if (i.customId === 'prev_page') {
+        currentPage = Math.max(1, currentPage - 1)
+      } else if (i.customId === 'next_page') {
+        currentPage = Math.min(totalPages, currentPage + 1)
+      }
+
+      await i.update({
+        embeds: [generateEmbed(currentPage)],
+        components: [generateButtons(currentPage)]
+      })
+    })
+
+    collector.on('end', async () => {
+      const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId('prev').setLabel('◀️ 上一頁').setStyle(ButtonStyle.Primary).setDisabled(true),
+        new ButtonBuilder().setCustomId('next').setLabel('下一頁 ▶️').setStyle(ButtonStyle.Primary).setDisabled(true)
+      )
+      try {
+        await interaction.editReply({ components: [disabledRow] })
+      } catch {
+        // 忽略編輯失敗的錯誤
+      }
+    })
+  }
+}
 
 client.on('interactionCreate', async interaction => {
   console.log(
@@ -366,16 +515,8 @@ client.on('interactionCreate', async interaction => {
 
         try {
           if (subcommand === '查看') {
-            const memory = getMemory()
-            const searchRes = await memory.getAll({ filters: { user_id: userId } })
-            const profile = searchRes && searchRes.results && searchRes.results.length > 0
-              ? searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
-              : ''
-            if (!profile) {
-              await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, flags: MessageFlags.Ephemeral })
-            } else {
-              await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, flags: MessageFlags.Ephemeral })
-            }
+            const sortParam = interaction.options.getString('排序') || '新到舊'
+            await handleViewMemory(interaction, userId, username, sortParam)
           } else if (subcommand === '清除') {
             const memory = getMemory()
             await memory.deleteAll({ userId })
@@ -404,17 +545,9 @@ client.on('interactionCreate', async interaction => {
       } else if (commandName === '我的記憶') {
         const userId = interaction.user.id
         const username = (interaction.member as any)?.displayName || interaction.user.username
+        const sortParam = interaction.options.getString('排序') || '新到舊'
         try {
-          const memory = getMemory()
-          const searchRes = await memory.getAll({ filters: { user_id: userId } })
-          const profile = searchRes && searchRes.results && searchRes.results.length > 0
-            ? searchRes.results.map((r: any) => `• ${r.memory}`).join('\n')
-            : ''
-          if (!profile) {
-            await interaction.reply({ content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`, flags: MessageFlags.Ephemeral })
-          } else {
-            await interaction.reply({ content: `🧠 **波波對「${username}」的長期記憶**：\n${profile}`, flags: MessageFlags.Ephemeral })
-          }
+          await handleViewMemory(interaction, userId, username, sortParam)
         } catch (err: any) {
           console.error('Error handling slash view memory command:', err)
           await interaction.reply({ content: `❌ 讀取記憶時發生錯誤：${err.message}`, flags: MessageFlags.Ephemeral })
