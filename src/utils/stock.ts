@@ -412,7 +412,7 @@ export async function getStockPrice(tickerSymbol: string): Promise<Record<string
         const testTicker = `${actualTicker}.TW`
         quote = await yahooFinance.quote(testTicker)
         actualTicker = testTicker
-      } catch (twErr) {
+      } catch {
         try {
           const testTicker = `${actualTicker}.TWO`
           quote = await yahooFinance.quote(testTicker)

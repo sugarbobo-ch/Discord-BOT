@@ -4,7 +4,7 @@ import { Command } from './command.interface'
 export class FeatureCommand implements Command {
   public names = ['功能', 'features']
 
-  public execute(message: Message, args: string[]): void {
+  public execute(message: Message): void {
     const embed = new EmbedBuilder()
       .setTitle('🤖 波波 (Bobo) 機器人功能介紹')
       .setDescription(

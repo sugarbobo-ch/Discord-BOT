@@ -40,8 +40,7 @@ export interface StockAnalysisResult {
  * 使用 Gemini API 分析使用者訊息是否提及股票，並回傳格式化股票代號與名稱
  */
 export const detectStocksWithAI = async (
-  prompt: string,
-  apiKey: string
+  prompt: string
 ): Promise<StockAnalysisResult> => {
   try {
     const response = await executeGenAI(ai =>

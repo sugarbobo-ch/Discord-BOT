@@ -11,7 +11,7 @@ import { getTwitterSetting } from '../utils/db'
 export class SettingCommand implements Command {
   public names = ['設定', 'setting']
 
-  public async execute(message: Message, args: string[]): Promise<void> {
+  public async execute(message: Message): Promise<void> {
     if (!message.guild) {
       await message.reply('❌ 此設定只能在伺服器（群組）中使用。')
       return

@@ -134,7 +134,7 @@ export const chatWithBobo = async (
   if (isStockQuery) {
     try {
       console.log(`[AI Chat Path Check] Entering stock query path. Calling detectStocksWithAI...`)
-      const analysis = await detectStocksWithAI(prompt, apiKey)
+      const analysis = await detectStocksWithAI(prompt)
       console.log(
         `[AI Chat Path Check] detectStocksWithAI returned: isMentioningStock = ${analysis.isMentioningStock}, stocks = ${JSON.stringify(analysis.stocks)}`
       )

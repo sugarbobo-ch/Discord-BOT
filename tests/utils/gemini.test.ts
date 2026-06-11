@@ -730,7 +730,7 @@ describe('Gemini Utility Tests', () => {
         ]
       })
 
-      const result = await detectStocksWithAI('發哥最新股價？', 'test_key')
+      const result = await detectStocksWithAI('發哥最新股價？')
       expect(result).toEqual({
         isMentioningStock: true,
         stocks: [{ name: '聯發科', ticker: '2454.TW' }]
@@ -762,7 +762,7 @@ describe('Gemini Utility Tests', () => {
         ]
       })
 
-      const result = await detectStocksWithAI('牙科可以買嗎？', 'test_key')
+      const result = await detectStocksWithAI('牙科可以買嗎？')
       expect(result).toEqual({
         isMentioningStock: true,
         stocks: [{ name: '南亞科', ticker: '2408.TW' }]

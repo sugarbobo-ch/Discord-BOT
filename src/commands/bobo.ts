@@ -552,17 +552,11 @@ export class BoboCommand implements Command {
       )
 
       // 5. 異步更新長期記憶
-      const repliedMsgPayload = repliedMsg ? {
-        author: repliedMsg.member?.displayName || repliedMsg.author.username,
-        content: repliedMsg.content || ''
-      } : undefined
-
       updateMemoryInBackground(
         message.author.id,
         currentAuthorName,
         prompt,
-        reply,
-        repliedMsgPayload
+        reply
       ).catch(err => {
         console.error('[Memory Update Background Error]:', err)
       })
@@ -608,7 +602,7 @@ export class BoboCommand implements Command {
       try {
         const dummy = await (message.channel as any).send({ content: '\u200B' })
         await dummy.delete().catch(() => {})
-      } catch (err: any) {
+      } catch {
         // 忽略可能存在的發言權限或刪除權限錯誤
       }
     }

@@ -9,8 +9,8 @@ import {
   MessageFlags
 } from 'discord.js'
 import { Command } from './command.interface'
-import { getUserMemorySetting, setUserMemorySetting } from '../utils/db'
-import { getMemory } from '../utils/gemini/mem0'
+import { setUserMemorySetting } from '../utils/db'
+import { executeMemoryOp } from '../utils/gemini/mem0'
 
 /**
  * 處理長期記憶查看的共用核心邏輯（支援 Embed 與分頁按鈕以及排序）
@@ -22,8 +22,7 @@ async function handleViewMemory(
   sortParam: string,
   isEphemeral: boolean
 ) {
-  const memory = getMemory()
-  const searchRes = await memory.getAll({ filters: { user_id: userId } })
+  const searchRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId } }))
   const results = searchRes?.results || []
 
   if (results.length === 0) {
@@ -201,8 +200,7 @@ export class MemoryCommand implements Command {
         const sortParam = (isAlias ? args[0]?.trim() : args[1]?.trim()) || '新到舊'
         await handleViewMemory(message, userId, username, sortParam, false)
       } else if (subcommand === '清除' || subcommand === 'clear') {
-        const memory = getMemory()
-        await memory.deleteAll({ userId })
+        await executeMemoryOp(memory => memory.deleteAll({ userId }))
         await message.reply(`🧹 長期記憶已成功清除！`)
       } else if (subcommand === '設定' || subcommand === 'set') {
         const content = args.slice(1).join(' ').trim()
@@ -212,9 +210,10 @@ export class MemoryCommand implements Command {
         }
         const statusMessage = await message.reply(`🔍 正在處理並設定長期記憶，請稍候...`)
         try {
-          const memory = getMemory()
-          await memory.deleteAll({ userId })
-          await memory.add(content, { userId })
+          await executeMemoryOp(async (memory) => {
+            await memory.deleteAll({ userId })
+            await memory.add(content, { userId })
+          })
           await statusMessage.edit(`✍️ 長期記憶已設定為：\n${content}`)
         } catch (err: any) {
           console.error('Error setting memory:', err)
@@ -248,8 +247,7 @@ export class MemoryCommand implements Command {
         const sortParam = interaction.options.getString('排序') || '新到舊'
         await handleViewMemory(interaction, userId, username, sortParam, true)
       } else if (subcommand === '清除') {
-        const memory = getMemory()
-        await memory.deleteAll({ userId })
+        await executeMemoryOp(memory => memory.deleteAll({ userId }))
         await interaction.reply({ content: `🧹 長期記憶已成功清除！`, flags: MessageFlags.Ephemeral })
       } else if (subcommand === '設定') {
         const content = interaction.options.getString('內容')?.trim()
@@ -259,9 +257,10 @@ export class MemoryCommand implements Command {
         }
         await interaction.deferReply({ flags: MessageFlags.Ephemeral })
         try {
-          const memory = getMemory()
-          await memory.deleteAll({ userId })
-          await memory.add(content, { userId })
+          await executeMemoryOp(async (memory) => {
+            await memory.deleteAll({ userId })
+            await memory.add(content, { userId })
+          })
           await interaction.editReply({ content: `✍️ 長期記憶已設定為：\n${content}` })
         } catch (err: any) {
           console.error('Error setting memory slash:', err)

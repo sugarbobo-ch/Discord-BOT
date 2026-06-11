@@ -1,6 +1,6 @@
 import { Message } from 'discord.js'
 import { getUserMemorySetting } from '../db'
-import { getMemory } from './mem0'
+import { executeMemoryOp } from './mem0'
 
 
 /**
@@ -66,8 +66,7 @@ export async function updateMemoryInBackground(
   targetUserId: string,
   targetUserName: string,
   userMessage: string,
-  aiResponse: string,
-  repliedMsg?: { author: string; content: string }
+  aiResponse: string
 ): Promise<void> {
   // 檢查使用者是否開啟記憶功能，若關閉則不進行長期記憶更新
   if (!getUserMemorySetting(targetUserId)) {
@@ -79,8 +78,7 @@ export async function updateMemoryInBackground(
   dialogueContext += `[AI 回覆]: "${aiResponse}"`
 
   try {
-    const memory = getMemory()
-    await memory.add(dialogueContext, { userId: targetUserId })
+    await executeMemoryOp(memory => memory.add(dialogueContext, { userId: targetUserId }))
     console.log(`[Memory Updated via Mem0] Target: ${targetUserName} (${targetUserId})`)
   } catch (err: any) {
     console.warn(`[Memory Reflection Failed] User: ${targetUserId} | Error:`, err.message)

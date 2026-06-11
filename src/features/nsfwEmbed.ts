@@ -273,7 +273,6 @@ const fetch18ComicMetadata = async (url: string): Promise<EmbedMetadata | null> 
   )
 
   let html = ''
-  let successUrl = ''
 
   for (const domain of domains) {
     try {
@@ -291,10 +290,9 @@ const fetch18ComicMetadata = async (url: string): Promise<EmbedMetadata | null> 
 
       if (res.status === 200 && !res.data.includes('Just a moment...')) {
         html = res.data
-        successUrl = targetUrl
         break
       }
-    } catch (err: any) {
+    } catch {
       // 繼續嘗試下一個域名
     }
   }

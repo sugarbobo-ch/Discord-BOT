@@ -206,7 +206,7 @@ export const removeFile = async (
   try {
     await fs.promises.unlink(`${dir}/${fileName}`)
     await removeFileFromIndexFile(dir, fileName, indexFileName)
-  } catch (error) {
+  } catch {
     throw new Error('無此檔案，請確認檔案名稱與類型正確')
   }
 }

@@ -26,15 +26,12 @@ import { SettingCommand } from './commands/setting'
 import { FeatureCommand } from './commands/feature'
 import { StockCommand } from './commands/stock'
 import { MemoryCommand } from './commands/memory'
-import { roastTypo, shouldSkipTypoCheck, isStrictLocalTypoCheck, getMemory } from './utils/gemini'
+import { roastTypo, shouldSkipTypoCheck, isStrictLocalTypoCheck, executeMemoryOp } from './utils/gemini'
 import { checkAndFixTwitterEmbed } from './features/twitter'
 import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
 import {
   setTwitterSetting,
   getTwitterSetting,
-  getUserMemory,
-  setUserMemory,
-  getUserMemorySetting,
   setUserMemorySetting
 } from './utils/db'
 
@@ -279,8 +276,7 @@ async function handleViewMemory(
   username: string,
   sortParam: string
 ) {
-  const memory = getMemory()
-  const searchRes = await memory.getAll({ filters: { user_id: userId } })
+  const searchRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId } }))
   const results = searchRes?.results || []
 
   if (results.length === 0) {
@@ -562,8 +558,7 @@ client.on('interactionCreate', async interaction => {
             const sortParam = interaction.options.getString('排序') || '新到舊'
             await handleViewMemory(interaction, userId, username, sortParam)
           } else if (subcommand === '清除') {
-            const memory = getMemory()
-            await memory.deleteAll({ userId })
+            await executeMemoryOp(memory => memory.deleteAll({ userId }))
             await interaction.reply({ content: `🧹 長期記憶已成功清除！`, flags: MessageFlags.Ephemeral })
           } else if (subcommand === '設定') {
             const content = interaction.options.getString('內容')?.trim()
@@ -573,9 +568,10 @@ client.on('interactionCreate', async interaction => {
             }
             await interaction.deferReply({ flags: MessageFlags.Ephemeral })
             try {
-              const memory = getMemory()
-              await memory.deleteAll({ userId })
-              await memory.add(content, { userId })
+              await executeMemoryOp(async (memory) => {
+                await memory.deleteAll({ userId })
+                await memory.add(content, { userId })
+              })
               await interaction.editReply({ content: `✍️ 長期記憶已設定為：\n${content}` })
             } catch (err: any) {
               console.error('Error setting memory slash:', err)

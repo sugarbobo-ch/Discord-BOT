@@ -15,13 +15,15 @@ const { mockAdd, mockSearch, mockGetAll, mockDeleteAll } = vi.hoisted(() => {
 })
 
 vi.mock('../../src/utils/gemini/mem0', () => {
+  const mockMemory = {
+    add: mockAdd,
+    search: mockSearch,
+    getAll: mockGetAll,
+    deleteAll: mockDeleteAll
+  }
   return {
-    getMemory: () => ({
-      add: mockAdd,
-      search: mockSearch,
-      getAll: mockGetAll,
-      deleteAll: mockDeleteAll
-    })
+    getMemory: () => mockMemory,
+    executeMemoryOp: (fn: any) => fn(mockMemory)
   }
 })
 

@@ -48,7 +48,7 @@ export function getDb(): any {
   // 執行 Schema 遷移 (如果欄位不存在則新增)
   try {
     dbConnection.exec('ALTER TABLE user_memories ADD COLUMN memory_enabled INTEGER DEFAULT 1;')
-  } catch (err) {
+  } catch {
     // 欄位已存在會丟出錯誤，可以直接忽略
   }
 
