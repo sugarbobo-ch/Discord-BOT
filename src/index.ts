@@ -271,13 +271,13 @@ async function handleViewMemory(
 
   let sortLabel = '時間新到舊'
   if (sortParam === '舊到新') {
-    results.sort((a: any, b: any) => new Date(a.updated_at || a.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime())
+    results.sort((a: any, b: any) => new Date(a.updatedAt || a.createdAt || 0).getTime() - new Date(b.updatedAt || b.createdAt || 0).getTime())
     sortLabel = '時間舊到新'
   } else if (sortParam === '字母') {
     results.sort((a: any, b: any) => a.memory.localeCompare(b.memory, 'zh-Hant-TW'))
     sortLabel = '字母排序'
   } else {
-    results.sort((a: any, b: any) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime())
+    results.sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
     sortLabel = '時間新到舊'
   }
 
@@ -299,7 +299,7 @@ async function handleViewMemory(
     pageItems.forEach((item: any, index: number) => {
       const globalIndex = startIndex + index + 1
       let timeStr = ''
-      const rawTime = item.updated_at || item.created_at
+      const rawTime = item.updatedAt || item.createdAt
       if (rawTime) {
         const d = new Date(rawTime)
         if (!isNaN(d.getTime())) {
@@ -327,50 +327,75 @@ async function handleViewMemory(
         .setCustomId('next_page')
         .setLabel('下一頁 ▶️')
         .setStyle(ButtonStyle.Primary)
-        .setDisabled(page === totalPages)
+        .setDisabled(page === totalPages),
+      new ButtonBuilder()
+        .setCustomId('copy_all')
+        .setLabel('📋 複製全部')
+        .setStyle(ButtonStyle.Secondary)
     )
     return row
   }
 
   const response = await interaction.reply({
     embeds: [generateEmbed(currentPage)],
-    components: totalPages > 1 ? [generateButtons(currentPage)] : [],
+    components: [generateButtons(currentPage)],
     flags: MessageFlags.Ephemeral,
     fetchReply: true
   })
 
-  if (totalPages > 1) {
-    const collector = response.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 60000,
-      filter: (i: any) => i.user.id === interaction.user.id
-    })
+  const collector = response.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 60000,
+    filter: (i: any) => i.user.id === interaction.user.id
+  })
 
-    collector.on('collect', async (i: any) => {
-      if (i.customId === 'prev_page') {
-        currentPage = Math.max(1, currentPage - 1)
-      } else if (i.customId === 'next_page') {
-        currentPage = Math.min(totalPages, currentPage + 1)
-      }
-
+  collector.on('collect', async (i: any) => {
+    if (i.customId === 'prev_page') {
+      currentPage = Math.max(1, currentPage - 1)
       await i.update({
         embeds: [generateEmbed(currentPage)],
         components: [generateButtons(currentPage)]
       })
-    })
+    } else if (i.customId === 'next_page') {
+      currentPage = Math.min(totalPages, currentPage + 1)
+      await i.update({
+        embeds: [generateEmbed(currentPage)],
+        components: [generateButtons(currentPage)]
+      })
+    } else if (i.customId === 'copy_all') {
+      const rawContent = results.map((item: any, idx: number) => {
+        let timeStr = ''
+        const rawTime = item.updatedAt || item.createdAt
+        if (rawTime) {
+          const d = new Date(rawTime)
+          if (!isNaN(d.getTime())) {
+            timeStr = ` (${d.toLocaleDateString('zh-TW')})`
+          }
+        }
+        return `${idx + 1}. [${timeStr || '無時間記錄'}] ${item.memory}`
+      }).join('\n')
 
-    collector.on('end', async () => {
-      const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId('prev').setLabel('◀️ 上一頁').setStyle(ButtonStyle.Primary).setDisabled(true),
-        new ButtonBuilder().setCustomId('next').setLabel('下一頁 ▶️').setStyle(ButtonStyle.Primary).setDisabled(true)
-      )
-      try {
-        await interaction.editReply({ components: [disabledRow] })
-      } catch {
-        // 忽略編輯失敗的錯誤
-      }
-    })
-  }
+      const formattedMessage = `🧠 **以下是波波對「${username}」記錄的所有長期記憶，你可以點擊程式碼區塊右上角的按鈕一鍵複製：**\n\`\`\`ts\n${rawContent}\n\`\`\``
+      
+      await i.reply({
+        content: formattedMessage,
+        flags: MessageFlags.Ephemeral
+      })
+    }
+  })
+
+  collector.on('end', async () => {
+    const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('prev').setLabel('◀️ 上一頁').setStyle(ButtonStyle.Primary).setDisabled(true),
+      new ButtonBuilder().setCustomId('next').setLabel('下一頁 ▶️').setStyle(ButtonStyle.Primary).setDisabled(true),
+      new ButtonBuilder().setCustomId('copy').setLabel('📋 複製全部').setStyle(ButtonStyle.Secondary).setDisabled(true)
+    )
+    try {
+      await interaction.editReply({ components: [disabledRow] })
+    } catch {
+      // 忽略編輯失敗的錯誤
+    }
+  })
 }
 
 client.on('interactionCreate', async interaction => {

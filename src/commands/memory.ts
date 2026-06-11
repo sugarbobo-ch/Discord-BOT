@@ -35,13 +35,13 @@ async function handleViewMemory(
 
   let sortLabel = '時間新到舊'
   if (sortParam === '舊到新' || sortParam === 'oldest') {
-    results.sort((a: any, b: any) => new Date(a.updated_at || a.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime())
+    results.sort((a: any, b: any) => new Date(a.updatedAt || a.createdAt || 0).getTime() - new Date(b.updatedAt || b.createdAt || 0).getTime())
     sortLabel = '時間舊到新'
   } else if (sortParam === '字母' || sortParam === 'abc') {
     results.sort((a: any, b: any) => a.memory.localeCompare(b.memory, 'zh-Hant-TW'))
     sortLabel = '字母排序'
   } else {
-    results.sort((a: any, b: any) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())
+    results.sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
     sortLabel = '時間新到舊'
   }
 
@@ -63,7 +63,7 @@ async function handleViewMemory(
     pageItems.forEach((item: any, index: number) => {
       const globalIndex = startIndex + index + 1
       let timeStr = ''
-      const rawTime = item.updated_at || item.created_at
+      const rawTime = item.updatedAt || item.createdAt
       if (rawTime) {
         const d = new Date(rawTime)
         if (!isNaN(d.getTime())) {
@@ -134,7 +134,7 @@ async function handleViewMemory(
     } else if (i.customId === 'copy_all') {
       const rawContent = results.map((item: any, idx: number) => {
         let timeStr = ''
-        const rawTime = item.updated_at || item.created_at
+        const rawTime = item.updatedAt || item.createdAt
         if (rawTime) {
           const d = new Date(rawTime)
           if (!isNaN(d.getTime())) {

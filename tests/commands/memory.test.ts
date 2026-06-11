@@ -75,8 +75,8 @@ describe('MemoryCommand Tests', () => {
   test('should show user memory if it exists', async () => {
     mockGetAll.mockResolvedValueOnce({
       results: [
-        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' },
-        { id: '2', memory: 'Loves cats', created_at: '2026-06-11T12:01:00Z' }
+        { id: '1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Loves cats', createdAt: '2026-06-11T12:01:00Z' }
       ]
     })
 
@@ -97,8 +97,8 @@ describe('MemoryCommand Tests', () => {
   test('should show user memory via !我的記憶 alias', async () => {
     mockGetAll.mockResolvedValueOnce({
       results: [
-        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' },
-        { id: '2', memory: 'Loves cats', created_at: '2026-06-11T12:01:00Z' }
+        { id: '1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Loves cats', createdAt: '2026-06-11T12:01:00Z' }
       ]
     })
 
@@ -116,8 +116,8 @@ describe('MemoryCommand Tests', () => {
   test('should sort user memory oldest to newest', async () => {
     mockGetAll.mockResolvedValueOnce({
       results: [
-        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' },
-        { id: '2', memory: 'Loves cats', created_at: '2026-06-11T12:01:00Z' }
+        { id: '1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Loves cats', createdAt: '2026-06-11T12:01:00Z' }
       ]
     })
 
@@ -134,8 +134,8 @@ describe('MemoryCommand Tests', () => {
   test('should sort user memory alphabetically', async () => {
     mockGetAll.mockResolvedValueOnce({
       results: [
-        { id: '1', memory: 'Banana', created_at: '2026-06-11T12:00:00Z' },
-        { id: '2', memory: 'Apple', created_at: '2026-06-11T12:01:00Z' }
+        { id: '1', memory: 'Banana', createdAt: '2026-06-11T12:00:00Z' },
+        { id: '2', memory: 'Apple', createdAt: '2026-06-11T12:01:00Z' }
       ]
     })
 
@@ -227,7 +227,7 @@ describe('MemoryCommand Tests', () => {
   test('should handle copy_all button interaction', async () => {
     mockGetAll.mockResolvedValueOnce({
       results: [
-        { id: '1', memory: 'Likes coding in TypeScript', created_at: '2026-06-11T12:00:00Z' }
+        { id: '1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' }
       ]
     })
 
