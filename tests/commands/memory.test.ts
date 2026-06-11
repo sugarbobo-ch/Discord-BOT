@@ -395,10 +395,19 @@ describe('MemoryCommand Tests', () => {
 
     expect(collectCallback).toBeDefined()
 
+    // 1. 先模擬點擊「🗑️ 刪除模式」按鈕以開啟選單
+    const mockToggleInteraction = {
+      customId: 'toggle_delete',
+      user: { id: mockMessage.author.id },
+      update: vi.fn().mockResolvedValue(true)
+    }
+    await collectCallback(mockToggleInteraction)
+    expect(mockToggleInteraction.update).toHaveBeenCalled()
+
     // Mock search results on update/re-fetch (empty list after deletion)
     mockGetAll.mockResolvedValueOnce({ results: [] })
 
-    // Trigger select menu interaction
+    // 2. 模擬下拉選單刪除
     const mockInteraction = {
       customId: 'delete_memory_select',
       values: ['delete_mem_1'],

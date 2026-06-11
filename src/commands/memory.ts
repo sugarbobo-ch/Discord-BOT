@@ -80,7 +80,9 @@ async function handleViewMemory(
     return embed
   }
 
-  const generateButtons = (page: number) => {
+  let isDeleteModeActive = false
+
+  const generateButtons = (page: number, deleteMode: boolean) => {
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('prev_page')
@@ -95,7 +97,11 @@ async function handleViewMemory(
       new ButtonBuilder()
         .setCustomId('copy_all')
         .setLabel('📋 複製全部')
-        .setStyle(ButtonStyle.Secondary)
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('toggle_delete')
+        .setLabel(deleteMode ? '❌ 關閉刪除' : '🗑️ 刪除模式')
+        .setStyle(deleteMode ? ButtonStyle.Danger : ButtonStyle.Secondary)
     )
     return row
   }
@@ -128,10 +134,9 @@ async function handleViewMemory(
     return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu)
   }
 
-  const menuRow = generateSelectMenu(currentPage)
   const replyOptions: any = {
     embeds: [generateEmbed(currentPage)],
-    components: menuRow ? [generateButtons(currentPage), menuRow] : [generateButtons(currentPage)]
+    components: [generateButtons(currentPage, isDeleteModeActive)]
   }
   if (isEphemeral) {
     replyOptions.flags = MessageFlags.Ephemeral
@@ -140,7 +145,7 @@ async function handleViewMemory(
 
   const response = (await target.reply(replyOptions)) as any
 
-  // 建立 collector 以便處理換頁、複製全部按鈕及下拉選單刪除
+  // 建立 collector 以便處理換頁、複製全部按鈕、切換刪除模式及下拉選單刪除
   const collector = response.createMessageComponentCollector({
     time: 60000,
     filter: (i: any) => i.user.id === userId
@@ -149,17 +154,21 @@ async function handleViewMemory(
   collector.on('collect', async (i: any) => {
     if (i.customId === 'prev_page') {
       currentPage = Math.max(1, currentPage - 1)
-      const newMenuRow = generateSelectMenu(currentPage)
+      const newMenuRow = isDeleteModeActive ? generateSelectMenu(currentPage) : null
       await i.update({
         embeds: [generateEmbed(currentPage)],
-        components: newMenuRow ? [generateButtons(currentPage), newMenuRow] : [generateButtons(currentPage)]
+        components: newMenuRow 
+          ? [generateButtons(currentPage, isDeleteModeActive), newMenuRow] 
+          : [generateButtons(currentPage, isDeleteModeActive)]
       })
     } else if (i.customId === 'next_page') {
       currentPage = Math.min(totalPages, currentPage + 1)
-      const newMenuRow = generateSelectMenu(currentPage)
+      const newMenuRow = isDeleteModeActive ? generateSelectMenu(currentPage) : null
       await i.update({
         embeds: [generateEmbed(currentPage)],
-        components: newMenuRow ? [generateButtons(currentPage), newMenuRow] : [generateButtons(currentPage)]
+        components: newMenuRow 
+          ? [generateButtons(currentPage, isDeleteModeActive), newMenuRow] 
+          : [generateButtons(currentPage, isDeleteModeActive)]
       })
     } else if (i.customId === 'copy_all') {
       const rawContent = results.map((item: any, idx: number) => {
@@ -179,6 +188,15 @@ async function handleViewMemory(
       await i.reply({
         content: formattedMessage,
         flags: MessageFlags.Ephemeral
+      })
+    } else if (i.customId === 'toggle_delete') {
+      isDeleteModeActive = !isDeleteModeActive
+      const newMenuRow = isDeleteModeActive ? generateSelectMenu(currentPage) : null
+      await i.update({
+        embeds: [generateEmbed(currentPage)],
+        components: newMenuRow 
+          ? [generateButtons(currentPage, isDeleteModeActive), newMenuRow] 
+          : [generateButtons(currentPage, isDeleteModeActive)]
       })
     } else if (i.customId === 'delete_memory_select') {
       const value = i.values[0]
@@ -230,10 +248,12 @@ async function handleViewMemory(
             }
             collector.stop()
           } else {
-            const newMenuRow = generateSelectMenu(currentPage)
+            const newMenuRow = isDeleteModeActive ? generateSelectMenu(currentPage) : null
             const newReplyOptions = {
               embeds: [generateEmbed(currentPage)],
-              components: newMenuRow ? [generateButtons(currentPage), newMenuRow] : [generateButtons(currentPage)]
+              components: newMenuRow 
+                ? [generateButtons(currentPage, isDeleteModeActive), newMenuRow] 
+                : [generateButtons(currentPage, isDeleteModeActive)]
             }
 
             if ('editReply' in target && typeof target.editReply === 'function') {
@@ -259,10 +279,15 @@ async function handleViewMemory(
     const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('prev').setLabel('◀️ 上一頁').setStyle(ButtonStyle.Primary).setDisabled(true),
       new ButtonBuilder().setCustomId('next').setLabel('下一頁 ▶️').setStyle(ButtonStyle.Primary).setDisabled(true),
-      new ButtonBuilder().setCustomId('copy').setLabel('📋 複製全部').setStyle(ButtonStyle.Secondary).setDisabled(true)
+      new ButtonBuilder().setCustomId('copy').setLabel('📋 複製全部').setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId('toggle_delete')
+        .setLabel(isDeleteModeActive ? '❌ 關閉刪除' : '🗑️ 刪除模式')
+        .setStyle(isDeleteModeActive ? ButtonStyle.Danger : ButtonStyle.Secondary)
+        .setDisabled(true)
     )
 
-    const disabledSelectRow = generateSelectMenu(currentPage)
+    const disabledSelectRow = isDeleteModeActive ? generateSelectMenu(currentPage) : null
     if (disabledSelectRow) {
       const selectMenu = disabledSelectRow.components[0]
       selectMenu.setDisabled(true)
