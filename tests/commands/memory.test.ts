@@ -5,12 +5,13 @@ import { commandRegistry } from '../../src/utils/registry'
 import { getDb, getUserMemorySetting, setUserMemorySetting } from '../../src/utils/db'
 
 // Mock mem0
-const { mockAdd, mockSearch, mockGetAll, mockDeleteAll } = vi.hoisted(() => {
+const { mockAdd, mockSearch, mockGetAll, mockDeleteAll, mockDelete } = vi.hoisted(() => {
   return {
     mockAdd: vi.fn(),
     mockSearch: vi.fn(),
     mockGetAll: vi.fn().mockResolvedValue({ results: [] }),
-    mockDeleteAll: vi.fn()
+    mockDeleteAll: vi.fn(),
+    mockDelete: vi.fn()
   }
 })
 
@@ -19,7 +20,8 @@ vi.mock('../../src/utils/gemini/mem0', () => {
     add: mockAdd,
     search: mockSearch,
     getAll: mockGetAll,
-    deleteAll: mockDeleteAll
+    deleteAll: mockDeleteAll,
+    delete: mockDelete
   }
   return {
     getMemory: () => mockMemory,
@@ -313,6 +315,141 @@ describe('MemoryCommand Tests', () => {
     )
     expect(mockEdit).toHaveBeenCalledWith(
       expect.stringContaining('長期記憶已設定為')
+    )
+  })
+
+  test('should delete specific memory by index', async () => {
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: 'mem_1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' },
+        { id: 'mem_2', memory: 'Loves cats', createdAt: '2026-06-11T12:01:00Z' }
+      ]
+    })
+
+    const mockEdit = vi.fn().mockResolvedValue(true)
+    mockMessage.reply.mockResolvedValueOnce({
+      edit: mockEdit
+    })
+
+    mockMessage.content = '!記憶 刪除 1'
+    await memoryCommand.execute(mockMessage, ['刪除', '1'])
+
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.stringContaining('正在處理中')
+    )
+    expect(mockDelete).toHaveBeenCalledWith('mem_2') // Default sort is new to old, so mem_2 is index 1
+    expect(mockEdit).toHaveBeenCalledWith(
+      expect.stringContaining('已成功刪除第 1 條記憶')
+    )
+  })
+
+  test('should delete specific memories by keyword', async () => {
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: 'mem_1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' },
+        { id: 'mem_2', memory: 'Loves cats', createdAt: '2026-06-11T12:01:00Z' }
+      ]
+    })
+
+    const mockEdit = vi.fn().mockResolvedValue(true)
+    mockMessage.reply.mockResolvedValueOnce({
+      edit: mockEdit
+    })
+
+    mockMessage.content = '!記憶 刪除 cat'
+    await memoryCommand.execute(mockMessage, ['刪除', 'cat'])
+
+    expect(mockMessage.reply).toHaveBeenCalledWith(
+      expect.stringContaining('正在處理中')
+    )
+    expect(mockDelete).toHaveBeenCalledWith('mem_2')
+    expect(mockEdit).toHaveBeenCalledWith(
+      expect.stringContaining('已成功刪除 **1** 條包含「cat」的記憶')
+    )
+  })
+
+  test('should handle select menu interaction for memory deletion', async () => {
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: 'mem_1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' }
+      ]
+    })
+
+    let collectCallback: any
+    const mockCollector = {
+      on: vi.fn().mockImplementation((event, cb) => {
+        if (event === 'collect') {
+          collectCallback = cb
+        }
+      }),
+      stop: vi.fn()
+    }
+    const mockResponse = {
+      createMessageComponentCollector: vi.fn().mockReturnValue(mockCollector),
+      edit: vi.fn().mockResolvedValue(true)
+    }
+    mockMessage.reply.mockResolvedValueOnce(mockResponse)
+
+    mockMessage.content = '!記憶 查看'
+    await memoryCommand.execute(mockMessage, ['查看'])
+
+    expect(collectCallback).toBeDefined()
+
+    // Mock search results on update/re-fetch (empty list after deletion)
+    mockGetAll.mockResolvedValueOnce({ results: [] })
+
+    // Trigger select menu interaction
+    const mockInteraction = {
+      customId: 'delete_memory_select',
+      values: ['delete_mem_1'],
+      user: { id: mockMessage.author.id },
+      deferReply: vi.fn().mockResolvedValue(true),
+      editReply: vi.fn().mockResolvedValue(true)
+    }
+    await collectCallback(mockInteraction)
+
+    expect(mockInteraction.deferReply).toHaveBeenCalled()
+    expect(mockDelete).toHaveBeenCalledWith('mem_1')
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('已成功刪除長期記憶')
+      })
+    )
+    // The original message is edited to show it is now empty
+    expect(mockResponse.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('目前沒有關於你的長期記憶')
+      })
+    )
+  })
+
+  test('should executeSlash delete command successfully', async () => {
+    mockGetAll.mockResolvedValueOnce({
+      results: [
+        { id: 'mem_1', memory: 'Likes coding in TypeScript', createdAt: '2026-06-11T12:00:00Z' }
+      ]
+    })
+
+    const mockInteraction: any = {
+      commandName: '記憶',
+      options: {
+        getSubcommand: () => '刪除',
+        getString: () => '1'
+      },
+      user: { id: 'test_user_slash_123', username: 'TestSlashUser' },
+      member: { displayName: 'TestSlashUser' },
+      deferReply: vi.fn().mockResolvedValue(true),
+      editReply: vi.fn().mockResolvedValue(true)
+    }
+
+    await memoryCommand.executeSlash(mockInteraction)
+
+    expect(mockInteraction.deferReply).toHaveBeenCalled()
+    expect(mockDelete).toHaveBeenCalledWith('mem_1')
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('已成功刪除第 1 條記憶')
+      })
     )
   })
 })
