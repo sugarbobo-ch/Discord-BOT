@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy for BoboBot</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background: #fff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+            font-size: 2.2em;
+        }
+        h2 {
+            color: #2980b9;
+            margin-top: 30px;
+            border-bottom: 1px solid #ecf0f1;
+            padding-bottom: 5px;
+        }
+        h3 {
+            color: #34495e;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        code {
+            background-color: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Privacy Policy for BoboBot</h1>
+        <p><em>Effective Date: June 12, 2026</em></p>
+        <p>This Privacy Policy describes how BoboBot ("we", "our", or "the Bot") collects, uses, and handles information when you use the Bot in a Discord server.</p>
+
+        <h2>1. Information We Collect</h2>
+        
+        <h3>A. Information Stored Locally on Server</h3>
+        <p>To provide core functionalities, the Bot stores the following data in a local database (SQLite) on our hosting server:</p>
+        <ul>
+            <li><strong>Custom Commands</strong>: Custom trigger keywords and their corresponding response text/media URLs defined by server administrators or users.</li>
+            <li><strong>User Long-Term Memory</strong>: Personalized facts or preferences that you consent to save (managed via the <code>!記憶</code> / <code>/記憶</code> commands). This is processed using the Mem0 framework and stored locally.</li>
+            <li><strong>Server Configuration</strong>: Settings such as enabled features and prefix settings.</li>
+        </ul>
+
+        <h3>B. Information Processed in Real-Time (In-Memory)</h3>
+        <p>The Bot processes the following data temporarily in RAM to respond to events. This data is <strong>not</strong> stored permanently:</p>
+        <ul>
+            <li><strong>Message Content</strong>: Read in real-time to match command prefixes, detect typos (for spelling correction roasts), find specific link patterns (for auto-embed fixes), and detect repeated messages (for echo/copypasta features).</li>
+            <li><strong>Channel History</strong>: Up to 50 recent messages are read when you chat with the Bot (<code>!bobo</code> or @mentions) to provide conversational context to the Google Gemini API.</li>
+        </ul>
+
+        <h2>2. Third-Party Data Sharing</h2>
+        <ul>
+            <li><strong>AI Conversation</strong>: Message text and images sent to the AI chat function are transmitted to the Google Gemini API to generate replies. We do not use this data to train machine learning models.</li>
+            <li><strong>Image/Link Parsing</strong>: URLs are processed through public APIs (such as Yahoo Finance API for stock inquiries, Saucenao for image search, or Pixiv/Wnacg/NHentai for preview retrieval). Only the relevant parameter (e.g., stock ticker, URL) is sent.</li>
+        </ul>
+
+        <h2>3. Data Control and Deletion</h2>
+        <p>Users have absolute control over their data:</p>
+        <ul>
+            <li><strong>Disabling Memory</strong>: You can turn off memory tracking at any time by typing <code>!記憶 關閉</code> or <code>/記憶 關閉</code>.</li>
+            <li><strong>Deleting Memory</strong>: You can clear all your stored memory by typing <code>!記憶 清除</code> or <code>/記憶 清除</code>.</li>
+            <li><strong>Custom Commands</strong>: Server administrators can remove any custom command using the <code>!remove [command]</code> instruction.</li>
+        </ul>
+
+        <h2>4. Contact</h2>
+        <p>If you have any questions or data deletion requests, please contact the bot owner (焦糖波波) through the Discord server.</p>
+        
+        <footer>
+            <p>© 2026 BoboBot. All rights reserved.</p>
+        </footer>
+    </div>
+</body>
+</html>
