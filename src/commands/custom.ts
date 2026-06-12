@@ -9,7 +9,6 @@ export class CustomCommand implements Command {
     'remove',
     'edit',
     'list',
-    'help',
     'addimg',
     'delimg',
     'send',

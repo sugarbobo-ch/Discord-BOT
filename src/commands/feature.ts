@@ -2,7 +2,7 @@ import { Message, EmbedBuilder, ChatInputCommandInteraction } from 'discord.js'
 import { Command } from './command.interface'
 
 export class FeatureCommand implements Command {
-  public names = ['功能', 'features']
+  public names = ['功能', 'features', 'help']
 
   public slashData = {
     name: '功能',
@@ -13,7 +13,8 @@ export class FeatureCommand implements Command {
     return new EmbedBuilder()
       .setTitle('🤖 波波 (Bobo) 機器人功能介紹')
       .setDescription(
-        '我是波波，一個多功能又帶點幽默的 Discord 機器人助手！以下是我的主要功能介紹與可用指令列表：'
+        '我是波波，一個多功能又帶點幽默的 Discord 機器人助手！以下是我的主要功能介紹與可用指令列表：\n\n' +
+          '📄 **[隱私權政策 (Privacy Policy)](https://sugarbobo-ch.github.io/Discord-BOT/privacy.html)**\n*我們非常重視您的隱私，點擊上方連結即可查看我們的資料處理說明。*'
       )
       .setColor(0x3498db) // 質感藍色
       .addFields(
@@ -87,7 +88,7 @@ export class FeatureCommand implements Command {
           value:
             '• 自動偵測 `x.com` 連結，置換為 `fixvx.com` 以修復預覽。\n' +
             '• `!設定` / `!setting` 或斜線指令 `/設定`：開啟/關閉推特自動置換功能（管理員專用）。\n' +
-            '• `!功能` / `!features` 或斜線指令 `/功能`：顯示本功能介紹與指令列表。'
+            '• `!功能` / `!features` / `!help` 或斜線指令 `/功能`：顯示本功能介紹與指令列表。'
         },
         {
           name: '✍️ 錯字糾正大師',
