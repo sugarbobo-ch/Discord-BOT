@@ -115,17 +115,36 @@ const getMessageImageUrl = (msg: Message): string | null => {
  * 安全地回覆訊息，如果原始訊息被刪除，則退回直接發送至頻道，防止崩潰
  */
 const safeReply = async (msg: Message, content: any): Promise<Message | null> => {
-  try {
-    return await msg.reply(content)
-  } catch (err: any) {
-    console.warn(`Failed to reply to message ${msg.id}, falling back to channel send:`, err.message)
+  let retries = 1
+  while (retries >= 0) {
     try {
-      return await (msg.channel as any).send(content)
-    } catch (channelErr: any) {
-      console.error('Failed to send fallback channel message:', channelErr.message)
-      return null
+      return await msg.reply(content)
+    } catch (err: any) {
+      const isNetworkError =
+        err.code === 'EPIPE' ||
+        err.code === 'ECONNRESET' ||
+        err.code === 'ETIMEDOUT' ||
+        err.message?.includes('EPIPE') ||
+        err.message?.includes('ECONNRESET') ||
+        err.message?.includes('socket')
+
+      if (isNetworkError && retries > 0) {
+        retries--
+        console.warn(`Transient error replying to message ${msg.id} (${err.message}). Retrying in 500ms...`)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        continue
+      }
+
+      console.warn(`Failed to reply to message ${msg.id}, falling back to channel send:`, err.message)
+      try {
+        return await (msg.channel as any).send(content)
+      } catch (channelErr: any) {
+        console.error('Failed to send fallback channel message:', channelErr.message)
+        return null
+      }
     }
   }
+  return null
 }
 
 /**
@@ -137,24 +156,49 @@ const safeEdit = async (
   content: any
 ): Promise<Message | null> => {
   if (statusMsg) {
-    try {
-      return await statusMsg.edit(content)
-    } catch (err: any) {
-      console.warn(
-        `Failed to edit status message ${statusMsg.id}, falling back to reply/send:`,
-        err.message
-      )
-      return await safeReply(originalMsg, content)
+    let retries = 1
+    while (retries >= 0) {
+      try {
+        return await statusMsg.edit(content)
+      } catch (err: any) {
+        const isNetworkError =
+          err.code === 'EPIPE' ||
+          err.code === 'ECONNRESET' ||
+          err.code === 'ETIMEDOUT' ||
+          err.message?.includes('EPIPE') ||
+          err.message?.includes('ECONNRESET') ||
+          err.message?.includes('socket')
+
+        if (isNetworkError && retries > 0) {
+          retries--
+          console.warn(`Transient error editing status message ${statusMsg.id} (${err.message}). Retrying in 500ms...`)
+          await new Promise(resolve => setTimeout(resolve, 500))
+          continue
+        }
+
+        console.warn(
+          `Failed to edit status message ${statusMsg.id}, falling back to reply/send:`,
+          err.message
+        )
+        return await safeReply(originalMsg, content)
+      }
     }
-  } else {
-    return await safeReply(originalMsg, content)
   }
+  return await safeReply(originalMsg, content)
 }
 
 export class BoboCommand implements Command {
   public names = ['bobo']
 
   public async execute(message: Message, args: string[]): Promise<void> {
+    const guildName = message.guild ? message.guild.name : '私訊 (DM)'
+    const guildId = message.guildId || 'DM'
+    const channelName = 'name' in message.channel ? (message.channel as any).name : 'DM'
+    const channelId = message.channelId
+    console.log(
+      `[Command: bobo] Triggered by ${message.author.tag} (${message.author.id}) in Guild: "${guildName}" (${guildId}) | Channel: "#${channelName}" (${channelId})`
+    )
+
     let prompt = args.join(' ')
     const attachment = message.attachments.first()
     const hasAttachment = attachment && attachment.contentType?.startsWith('image/')

@@ -6,6 +6,13 @@ describe('SQLite Database Tests', () => {
 
   beforeAll(() => {
     db = getDb()
+    // 確保測試開始前為乾淨狀態，避免上一次測試異常中斷殘留資料導致失敗
+    try {
+      db.prepare("DELETE FROM settings WHERE server_id IN ('test_server_setting', 'test_server_123', 'test_server_456')").run()
+      db.prepare("DELETE FROM servers WHERE server_id IN ('test_server_setting', 'test_server_123', 'test_server_456')").run()
+    } catch (err) {
+      // 忽略資料表可能尚未完全建立等罕見錯誤
+    }
   })
 
   test('should initialize tables successfully', () => {
