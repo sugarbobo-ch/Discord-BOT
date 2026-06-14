@@ -626,6 +626,60 @@ describe('Gemini Utility Tests', () => {
     )
   })
 
+  test('chatWithBobo should dynamically adjust response length constraints based on user prompt length', async () => {
+    mockGenerateContent.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: '好的' }] } }]
+    })
+
+    // Test 1: Very short prompt (<= 5 chars)
+    await chatWithBobo('嗨', 'user_short_1')
+    expect(mockGenerateContent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining('限制在 15 字以內')
+              })
+            ])
+          })
+        ])
+      })
+    )
+
+    // Test 2: Short prompt (<= 15 chars)
+    await chatWithBobo('你今天吃飽了沒？', 'user_short_2')
+    expect(mockGenerateContent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining('限制在 30 字以內')
+              })
+            ])
+          })
+        ])
+      })
+    )
+
+    // Test 3: Casual long prompt (> 60 chars)
+    await chatWithBobo('今天天氣真的很好而且放假不知道要去哪裡玩，你有什麼推薦的郊遊行程或是適合去逛逛的好地方嗎？可以跟我多聊聊一些好玩的景點推薦或是好吃的下午茶店嗎？', 'user_long')
+    expect(mockGenerateContent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining('回覆上限嚴格限制在 200 字以內')
+              })
+            ])
+          })
+        ])
+      })
+    )
+  })
+
   test('chatWithBobo should execute functionCall, and exclude googleSearch from tools in the second loop call', async () => {
     // Mock the first call to return a functionCall for get_stock_price
     mockGenerateContent
