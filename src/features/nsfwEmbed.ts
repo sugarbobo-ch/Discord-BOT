@@ -19,6 +19,7 @@ const WACG_REGEX =
 const COMIC18_REGEX =
   /https?:\/\/(?:www\.)?(?:18comic\.(?:vip|org|art|ink)|jmcomic\.(?:me|co)|jm-comic\d*\.(?:art|group))\/(?:album|photo)\/(\d+)\/?/i
 const HAPPYMH_REGEX = /https?:\/\/(?:www\.|m\.)?happymh\.com\/manga\/([a-zA-Z0-9_-]+)\/?/i
+const NHENTAI_REGEX = /https?:\/\/(?:www\.)?nhentai\.(?:net|xxx|to)\/g\/(\d+)\/?/i
 
 /**
  * 取得 E-Hentai / ExHentai 的 Metadata
@@ -70,7 +71,7 @@ const fetchEhentaiMetadata = async (url: string): Promise<EmbedMetadata | null> 
 /**
  * 取得 Wnacg 的 Metadata
  */
-const fetchWnacgMetadata = async (url: string): Promise<EmbedMetadata | null> => {
+export const fetchWnacgMetadata = async (url: string): Promise<EmbedMetadata | null> => {
   const regex = new RegExp(WACG_REGEX.source, 'i')
   const match = regex.exec(url)
   if (!match) return null
@@ -133,6 +134,102 @@ const fetchWnacgMetadata = async (url: string): Promise<EmbedMetadata | null> =>
     }
   } catch (error: any) {
     console.error(`[fetchWnacgMetadata] Error fetching ${url}:`, error.message || error)
+  }
+  return null
+}
+
+/**
+ * 取得 nhentai 的 Metadata (經由 nhentai.xxx 鏡像)
+ */
+export const fetchNhentaiMetadata = async (urlOrId: string): Promise<EmbedMetadata | null> => {
+  let id = ''
+  let url = ''
+  const match = new RegExp(NHENTAI_REGEX.source, 'i').exec(urlOrId)
+  if (match) {
+    id = match[1]
+    url = urlOrId
+  } else if (/^\d+$/.test(urlOrId.trim())) {
+    id = urlOrId.trim()
+    url = `https://nhentai.net/g/${id}/`
+  } else {
+    return null
+  }
+
+  const targetUrl = `https://nhentai.xxx/g/${id}/`
+  try {
+    const res = await axios.get(targetUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+      },
+      timeout: 10000
+    })
+
+    const html = res.data
+    const titleMatch = html.match(/<h1>([^<]+)<\/h1>/i) || html.match(/<title>([^<]+)<\/title>/i)
+    let englishTitle = titleMatch ? titleMatch[1].trim() : ''
+    const jpTitleMatch = html.match(/<h2>([^<]+)<\/h2>/i)
+    let japaneseTitle = jpTitleMatch ? jpTitleMatch[1].trim() : ''
+
+    let title = englishTitle || japaneseTitle || `nhentai作品 - ${id}`
+    title = title.replace(/\s*&raquo;\s*nhentai\s*$/i, '').trim()
+
+    const imgMatch = html.match(/class="cover"[^]*?<img[^>]+(?:src|data-src)="([^"]+)"/i)
+    let coverUrl = imgMatch ? imgMatch[1] : ''
+    if (coverUrl.startsWith('//')) {
+      coverUrl = 'https:' + coverUrl
+    }
+
+    const artistBlockMatch = html.match(/<li class='tags'><span class='text'>Artists<\/span>([\s\S]*?)<\/li>/i)
+    const artists: string[] = []
+    if (artistBlockMatch) {
+      const artistRegex = /<span class='tag_name'>([\s\S]*?)<\/span>/gi
+      let match
+      while ((match = artistRegex.exec(artistBlockMatch[1])) !== null) {
+        const artistName = match[1].replace(/<[^>]+>/g, '').trim()
+        if (artistName) artists.push(artistName)
+      }
+    }
+
+    const tagsBlockMatch = html.match(/<li class='tags'><span class='text'>Tags<\/span>([\s\S]*?)<\/li>/i)
+    const tags: string[] = []
+    if (tagsBlockMatch) {
+      const tagRegex = /<span class='tag_name'>([\s\S]*?)<\/span>/gi
+      let match
+      while ((match = tagRegex.exec(tagsBlockMatch[1])) !== null) {
+        const tagName = match[1].replace(/<[^>]+>/g, '').trim()
+        if (tagName) tags.push(tagName)
+      }
+    }
+
+    const categoryBlockMatch = html.match(/<li class='tags'><span class='text'>Category<\/span>([\s\S]*?)<\/li>/i)
+    let category = ''
+    if (categoryBlockMatch) {
+      const catMatch = categoryBlockMatch[1].match(/<span class='tag_name'>([^<]+)<\/span>/i)
+      if (catMatch) category = catMatch[1].trim()
+    }
+
+    const pagesMatch = html.match(/<span class="tag_name pages">(\d+)<\/span>/i)
+    const pagesCount = pagesMatch ? pagesMatch[1] : ''
+
+    const finalTags = [...tags]
+    if (pagesCount) {
+      finalTags.push(`${pagesCount} pages`)
+    }
+
+    return {
+      title,
+      url,
+      coverUrl,
+      author: artists.join(', ') || '未知',
+      category,
+      tags: finalTags,
+      siteName: 'nhentai',
+      color: 0xed2553
+    }
+  } catch (error: any) {
+    console.error(`[fetchNhentaiMetadata] Error fetching nhentai ${id}:`, error.message || error)
   }
   return null
 }
@@ -378,7 +475,7 @@ const fetch18ComicMetadata = async (url: string): Promise<EmbedMetadata | null> 
 /**
  * 建立 Discord Embed
  */
-const createEmbed = (meta: EmbedMetadata): EmbedBuilder => {
+export const createEmbed = (meta: EmbedMetadata): EmbedBuilder => {
   const embed = new EmbedBuilder()
     .setTitle(meta.title)
     .setURL(meta.url)
@@ -447,8 +544,9 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
   const hasWn = WACG_REGEX.test(content)
   const hasComic = COMIC18_REGEX.test(content)
   const hasHappymh = HAPPYMH_REGEX.test(content)
+  const hasNh = NHENTAI_REGEX.test(content)
 
-  if (!hasEh && !hasWn && !hasComic && !hasHappymh) return
+  if (!hasEh && !hasWn && !hasComic && !hasHappymh && !hasNh) return
 
   // 2. 檢查是否為 NSFW 頻道
   const isNsfw =
@@ -486,6 +584,11 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
         urls.push(match[0])
       }
 
+      const nhRegex = new RegExp(NHENTAI_REGEX.source, 'gi')
+      while ((match = nhRegex.exec(content)) !== null) {
+        urls.push(match[0])
+      }
+
       // 對於每個網址，若 Discord 沒有為其產生包含縮圖的 embed，則發送自訂預覽
       const processedIds = new Set<string>()
 
@@ -495,6 +598,7 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
         let isWnUrl = false
         let isComicUrl = false
         let isHappymhUrl = false
+        let isNhUrl = false
 
         let matchArray = new RegExp(EHENTAI_REGEX.source, 'i').exec(url)
         if (matchArray) {
@@ -515,6 +619,12 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
               if (matchArray) {
                 id = matchArray[1]
                 isHappymhUrl = true
+              } else {
+                matchArray = new RegExp(NHENTAI_REGEX.source, 'i').exec(url)
+                if (matchArray) {
+                  id = matchArray[1]
+                  isNhUrl = true
+                }
               }
             }
           }
@@ -545,6 +655,8 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
           metadata = await fetch18ComicMetadata(url)
         } else if (isHappymhUrl) {
           metadata = await fetchHappymhMetadata(url)
+        } else if (isNhUrl) {
+          metadata = await fetchNhentaiMetadata(url)
         }
 
         if (metadata) {

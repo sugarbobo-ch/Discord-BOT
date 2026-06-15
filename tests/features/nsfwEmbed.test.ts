@@ -360,4 +360,60 @@ describe('NSFW Embed Features Tests', () => {
 
     expect(mockMessage.channel.send).toHaveBeenCalled()
   })
+
+  test('should fetch and send embed for nhentai URL', async () => {
+    mockMessage.content = 'https://nhentai.net/g/177013/'
+
+    const mockHtml = `
+      <h1>COMIC LO 2016-08</h1>
+      <h2>COMIC LO 2016年8月号</h2>
+      <div class="cover">
+        <img src="https://i3.nhentaimg.com/007/6bedcf5741/cover.jpg" />
+      </div>
+      <li class='tags'><span class='text'>Artists</span>
+        <a class='tag_btn'><span class='tag_name'>mdo-h</span></a>
+      </li>
+      <li class='tags'><span class='text'>Tags</span>
+        <a class='tag_btn'><span class='tag_name'>lolicon</span></a>
+      </li>
+      <li class='tags'><span class='text'>Category</span>
+        <a class='tag_btn'><span class='tag_name'>manga</span></a>
+      </li>
+      <span class="tag_name pages">464</span>
+    `
+
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      status: 200,
+      data: mockHtml
+    })
+
+    checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
+
+    await vi.runAllTimersAsync()
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://nhentai.xxx/g/177013/',
+      expect.any(Object)
+    )
+
+    expect(mockMessage.channel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.any(Object)
+        ])
+      })
+    )
+
+    const sendCallArgs = vi.mocked(mockMessage.channel.send).mock.calls[0][0] as any
+    const embed = sendCallArgs.embeds[0]
+    expect(embed.data.title).toBe('COMIC LO 2016-08')
+    expect(embed.data.url).toBe('https://nhentai.net/g/177013/')
+    expect(embed.data.color).toBe(0xed2553)
+    expect(embed.data.image.url).toBe('https://i3.nhentaimg.com/007/6bedcf5741/cover.jpg')
+    
+    const fields = embed.data.fields
+    expect(fields).toContainEqual(expect.objectContaining({ name: '作者/漢化', value: 'mdo-h' }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '分類', value: 'manga' }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '標籤', value: 'lolicon, 464 pages' }))
+  })
 })

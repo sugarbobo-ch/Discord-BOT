@@ -1,15 +1,36 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { NsfwCommand } from '../../src/commands/nsfw'
+import { fetchWnacgMetadata, fetchNhentaiMetadata, createEmbed } from '../../src/features/nsfwEmbed'
 
-describe('NsfwCommand Format Validation Tests', () => {
+vi.mock('../../src/features/nsfwEmbed', () => ({
+  fetchWnacgMetadata: vi.fn(),
+  fetchNhentaiMetadata: vi.fn(),
+  createEmbed: vi.fn().mockImplementation((meta) => ({
+    data: meta,
+    toJSON: () => meta
+  }))
+}))
+
+describe('NsfwCommand Format Validation and Execution Tests', () => {
   let mockChannel: any
   let mockReply: any
   let nsfwCommand: NsfwCommand
 
   beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(createEmbed).mockImplementation((meta) => ({
+      data: meta,
+      toJSON: () => meta
+    }) as any)
+
     mockChannel = {
       isTextBased: vi.fn().mockReturnValue(true),
-      send: vi.fn(),
+      send: vi.fn().mockImplementation(async (options) => {
+        // Return a mock message that can be edited
+        return {
+          edit: vi.fn()
+        }
+      }),
       nsfw: true
     }
     mockReply = vi.fn()
@@ -58,5 +79,100 @@ describe('NsfwCommand Format Validation Tests', () => {
 
     await nsfwCommand.execute(msg, [])
     expect(mockReply).toHaveBeenCalledWith('格式錯誤，正確格式為：!wnacg [車號]')
+  })
+
+  test('should block commands in non-NSFW channel', async () => {
+    mockChannel.nsfw = false
+    const msg = {
+      content: '!pixiv 12345',
+      channel: mockChannel,
+      reply: mockReply
+    } as any
+
+    await nsfwCommand.execute(msg, ['12345'])
+    expect(mockChannel.send).toHaveBeenCalledWith('請至開車頻道使用此指令')
+  })
+
+  test('should send pixiv embed in NSFW channel', async () => {
+    const msg = {
+      content: '!pixiv 12345',
+      channel: mockChannel,
+      reply: mockReply
+    } as any
+
+    await nsfwCommand.execute(msg, ['12345'])
+    expect(mockChannel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Pixiv 作品 - 12345',
+              url: 'https://www.pixiv.net/artworks/12345',
+              image: expect.objectContaining({ url: 'https://pixiv.cat/12345.png' })
+            })
+          })
+        ])
+      })
+    )
+  })
+
+  test('should fetch and send Wnacg embed in NSFW channel', async () => {
+    const mockMeta = {
+      title: 'Wnacg Book Title',
+      url: 'https://www.wnacg.com/photos-index-aid-301531.html',
+      coverUrl: 'https://img.wnacg.com/cover.jpg',
+      author: 'Author',
+      tags: ['tag1', 'tag2'],
+      siteName: 'Wnacg 紳士漫畫',
+      color: 0x2196f3
+    }
+    vi.mocked(fetchWnacgMetadata).mockResolvedValueOnce(mockMeta)
+
+    const msg = {
+      content: '!wnacg 301531',
+      channel: mockChannel,
+      reply: mockReply
+    } as any
+
+    const mockStatusMsg = { edit: vi.fn() }
+    mockChannel.send.mockResolvedValueOnce(mockStatusMsg)
+
+    await nsfwCommand.execute(msg, ['301531'])
+
+    expect(fetchWnacgMetadata).toHaveBeenCalledWith('https://www.wnacg.com/photos-index-aid-301531.html')
+    expect(mockStatusMsg.edit).toHaveBeenCalledWith({
+      content: '讀取完成！',
+      embeds: [expect.objectContaining({ data: mockMeta })]
+    })
+  })
+
+  test('should fetch and send nhentai embed in NSFW channel', async () => {
+    const mockMeta = {
+      title: 'nhentai Book Title',
+      url: 'https://nhentai.net/g/177013/',
+      coverUrl: 'https://i.nhentaimg.com/cover.jpg',
+      author: 'Author',
+      tags: ['tag1', 'tag2'],
+      siteName: 'nhentai',
+      color: 0xed2553
+    }
+    vi.mocked(fetchNhentaiMetadata).mockResolvedValueOnce(mockMeta)
+
+    const msg = {
+      content: '!god 177013',
+      channel: mockChannel,
+      reply: mockReply
+    } as any
+
+    const mockStatusMsg = { edit: vi.fn() }
+    mockChannel.send.mockResolvedValueOnce(mockStatusMsg)
+
+    await nsfwCommand.execute(msg, ['177013'])
+
+    expect(fetchNhentaiMetadata).toHaveBeenCalledWith('177013')
+    expect(mockStatusMsg.edit).toHaveBeenCalledWith({
+      content: '讀取完成！',
+      embeds: [expect.objectContaining({ data: mockMeta })]
+    })
   })
 })

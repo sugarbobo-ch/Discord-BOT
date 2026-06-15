@@ -1,6 +1,7 @@
 import { Message, EmbedBuilder } from 'discord.js'
 import { Command } from './command.interface'
 import axios from 'axios'
+import { fetchWnacgMetadata, fetchNhentaiMetadata, createEmbed } from '../features/nsfwEmbed'
 
 interface SaucenaoResult {
   similarity: number
@@ -21,7 +22,7 @@ export class NsfwCommand implements Command {
     const cmd = message.content.substring(1).split(' ')[0].toLowerCase()
     switch (cmd) {
       case 'pixiv':
-        this.getPixivURL(message, args)
+        await this.getPixivURL(message, args)
         break
       case '搜圖':
         await this.getSourceURL(message, args)
@@ -29,17 +30,34 @@ export class NsfwCommand implements Command {
       case '神的語言':
       case 'nhentai':
       case 'god':
-        this.getHentaiURL(message, args)
+        await this.getHentaiURL(message, args)
         break
       case 'wnacg':
-        this.getWnacgURL(message, args)
+        await this.getWnacgURL(message, args)
         break
     }
   }
 
-  private getPixivURL(message: Message, args: string[]): void {
+  private async getPixivURL(message: Message, args: string[]): Promise<void> {
     if (args.length === 1) {
-      ;(message.channel as any).send(`https://www.pixiv.net/artworks/${args[0]}`)
+      if (message.channel.isTextBased() && 'nsfw' in message.channel && !message.channel.nsfw) {
+        ;(message.channel as any).send('請至開車頻道使用此指令')
+        return
+      }
+      const id = args[0].trim()
+      if (!/^\d+$/.test(id)) {
+        message.reply('格式錯誤，正確格式為：!pixiv [作品ID]')
+        return
+      }
+      const embed = new EmbedBuilder()
+        .setTitle(`Pixiv 作品 - ${id}`)
+        .setURL(`https://www.pixiv.net/artworks/${id}`)
+        .setImage(`https://pixiv.cat/${id}.png`)
+        .setColor(0x0096fa)
+        .setAuthor({ name: 'Pixiv' })
+        .setTimestamp()
+
+      ;(message.channel as any).send({ embeds: [embed] })
     } else {
       message.reply('格式錯誤，正確格式為：!pixiv [作品ID]')
     }
@@ -370,22 +388,108 @@ export class NsfwCommand implements Command {
     }
   }
 
-  private getHentaiURL(message: Message, args: string[]): void {
+  private async getHentaiURL(message: Message, args: string[]): Promise<void> {
     const cmd = message.content.substring(1).split(' ')[0].toLowerCase()
-    if (args.length === 1) {
-      ;(message.channel as any).send(`https://nhentai.net/g/${args[0]}`)
-    } else {
-      message.reply(`格式錯誤，正確格式為：!${cmd} [車號]`)
-    }
-  }
-
-  private getWnacgURL(message: Message, args: string[]): void {
     if (args.length === 1) {
       if (message.channel.isTextBased() && 'nsfw' in message.channel && !message.channel.nsfw) {
         ;(message.channel as any).send('請至開車頻道使用此指令')
         return
       }
-      ;(message.channel as any).send(`https://www.wnacg.com/photos-index-aid-${args[0]}.html`)
+      const id = args[0].trim()
+      if (!/^\d+$/.test(id)) {
+        message.reply(`格式錯誤，正確格式為：!${cmd} [車號]`)
+        return
+      }
+
+      let statusMessage: Message | null = null
+      try {
+        statusMessage = await (message.channel as any).send('🔍 正在讀取本本資訊，請稍候...')
+      } catch (err) {
+        console.warn('Failed to send status message:', err)
+      }
+
+      try {
+        const metadata = await fetchNhentaiMetadata(id)
+        if (metadata) {
+          const embed = createEmbed(metadata)
+          if (statusMessage) {
+            await statusMessage.edit({ content: '讀取完成！', embeds: [embed] })
+          } else {
+            ;(message.channel as any).send({ embeds: [embed] })
+          }
+        } else {
+          // Fallback to basic embed if scraping mirror fails
+          const fallbackEmbed = new EmbedBuilder()
+            .setTitle(`nhentai 本子 - ${id}`)
+            .setURL(`https://nhentai.net/g/${id}`)
+            .setColor(0xed2553)
+            .setDescription('⚠️ 無法自動獲取詳細資訊，請點擊標題連結前往閱讀。')
+            .setTimestamp()
+
+          if (statusMessage) {
+            await statusMessage.edit({ content: '', embeds: [fallbackEmbed] })
+          } else {
+            ;(message.channel as any).send({ embeds: [fallbackEmbed] })
+          }
+        }
+      } catch (error: any) {
+        console.error('Failed to send nhentai embed:', error.message || error)
+        if (statusMessage) {
+          await statusMessage.edit(`https://nhentai.net/g/${id}`)
+        } else {
+          ;(message.channel as any).send(`https://nhentai.net/g/${id}`)
+        }
+      }
+    } else {
+      message.reply(`格式錯誤，正確格式為：!${cmd} [車號]`)
+    }
+  }
+
+  private async getWnacgURL(message: Message, args: string[]): Promise<void> {
+    if (args.length === 1) {
+      if (message.channel.isTextBased() && 'nsfw' in message.channel && !message.channel.nsfw) {
+        ;(message.channel as any).send('請至開車頻道使用此指令')
+        return
+      }
+      const id = args[0].trim()
+      if (!/^\d+$/.test(id)) {
+        message.reply('格式錯誤，正確格式為：!wnacg [車號]')
+        return
+      }
+
+      let statusMessage: Message | null = null
+      try {
+        statusMessage = await (message.channel as any).send('🔍 正在讀取本本資訊，請稍候...')
+      } catch (err) {
+        console.warn('Failed to send status message:', err)
+      }
+
+      try {
+        const url = `https://www.wnacg.com/photos-index-aid-${id}.html`
+        const metadata = await fetchWnacgMetadata(url)
+        if (metadata) {
+          const embed = createEmbed(metadata)
+          if (statusMessage) {
+            await statusMessage.edit({ content: '讀取完成！', embeds: [embed] })
+          } else {
+            ;(message.channel as any).send({ embeds: [embed] })
+          }
+        } else {
+          if (statusMessage) {
+            await statusMessage.edit(url)
+          } else {
+            ;(message.channel as any).send(url)
+          }
+        }
+      } catch (error: any) {
+        console.error('Failed to send wnacg embed:', error.message || error)
+        const url = `https://www.wnacg.com/photos-index-aid-${id}.html`
+        if (statusMessage) {
+          await statusMessage.edit(url)
+        } else {
+          ;(message.channel as any).send(url)
+        }
+      }
     } else {
       message.reply('格式錯誤，正確格式為：!wnacg [車號]')
     }
