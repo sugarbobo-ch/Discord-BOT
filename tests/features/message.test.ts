@@ -9,7 +9,9 @@ import {
   checkCommand,
   getImageCommand,
   getMediaCommand,
-  readCommandDict
+  readCommandDict,
+  isCustomCommandResponse,
+  shouldSkipDialogueTrigger
 } from '../../src/features/message'
 import { CustomCommand } from '../../src/commands/custom'
 import { getDb } from '../../src/utils/db'
@@ -376,6 +378,117 @@ describe('Message Feature Tests', () => {
       const triggerMsg = mockMessage('!direct_add_test', testServerId)
       checkCommand(triggerMsg, 'direct_add_test')
       expect(triggerMsg.channel.send).toHaveBeenCalledWith('success_msg')
+    })
+  })
+
+  describe('isCustomCommandResponse', () => {
+    const testServerId = 'test_guild_message_feature'
+
+    beforeAll(async () => {
+      const db = getDb()
+      db.prepare('INSERT OR IGNORE INTO servers (server_id) VALUES (?)').run(testServerId)
+      const addMsg = mockMessage('!add custom_reply_test dummy_response', testServerId)
+      await editCommand(addMsg, 'add')
+      await readCommandDict()
+    })
+
+    test('should return true if message content matches a custom command response', () => {
+      const msg = mockMessage('dummy_response', testServerId)
+      expect(isCustomCommandResponse(msg)).toBe(true)
+    })
+
+    test('should return false if message content does not match any custom command response', () => {
+      const msg = mockMessage('not_a_custom_response', testServerId)
+      expect(isCustomCommandResponse(msg)).toBe(false)
+    })
+
+    test('should return false if message is not in a guild', () => {
+      const msg = mockMessage('dummy_response')
+      delete msg.guild
+      expect(isCustomCommandResponse(msg)).toBe(false)
+    })
+  })
+
+  describe('shouldSkipDialogueTrigger', () => {
+    test('should return true if current message contains a fixvx URL', () => {
+      const msg = mockMessage('check this out https://fixvx.com/status/123')
+      expect(shouldSkipDialogueTrigger(msg, null)).toBe(true)
+    })
+
+    test('should return true if replied message contains a fixvx URL', () => {
+      const msg = mockMessage('hello')
+      const repliedMsg = mockMessage('https://vxtwitter.com/status/123')
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
+    })
+
+    test('should return true if current message is a comic URL', () => {
+      const msg = mockMessage('https://nhentai.net/g/123456')
+      expect(shouldSkipDialogueTrigger(msg, null)).toBe(true)
+    })
+
+    test('should return true if replied message starts with a command prefix', () => {
+      const msg = mockMessage('hello')
+      const repliedMsg1 = mockMessage('!lottery')
+      const repliedMsg2 = mockMessage('！rollcall')
+      const repliedMsg3 = mockMessage('/setting')
+      const repliedMsg4 = mockMessage('#123456')
+
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg1)).toBe(true)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg2)).toBe(true)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg3)).toBe(true)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg4)).toBe(true)
+    })
+
+    test('should return true if replied message has a slash command interaction', () => {
+      const msg = mockMessage('hello')
+      const repliedMsg = mockMessage('some reply content', 'test_guild_message_feature')
+      ;(repliedMsg as any).interaction = { id: 'slash_interaction_id' }
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
+    })
+
+    test('should return true if replied message is a custom command response', () => {
+      const msg = mockMessage('hello', 'test_guild_message_feature')
+      const repliedMsg = mockMessage('dummy_response', 'test_guild_message_feature')
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
+    })
+
+    test('should return true if replied message content matches a bot command response pattern', () => {
+      const msg = mockMessage('hello')
+      const repliedMsg1 = mockMessage('投票：結束點名 (3/3)')
+      const repliedMsg2 = mockMessage('抽獎清單以及說明')
+      const repliedMsg3 = mockMessage('機器人伺服器設定')
+      const repliedMsg4 = mockMessage('長期記憶功能已開啟')
+      const repliedMsg5 = mockMessage('股票歷史走勢')
+
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg1)).toBe(true)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg2)).toBe(true)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg3)).toBe(true)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg4)).toBe(true)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg5)).toBe(true)
+    })
+
+    test('should return true if replied message contains a comic site URL', () => {
+      const msg = mockMessage('hello')
+      const repliedMsg = mockMessage('https://wnacg.com/photos-index-aid-123.html')
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
+    })
+
+    test('should return true if replied message embeds matches comic keywords', () => {
+      const msg = mockMessage('hello')
+      const repliedMsg = mockMessage('some text')
+      ;(repliedMsg as any).embeds = [
+        {
+          title: '紳士漫畫 - Wnacg',
+          description: 'something description'
+        }
+      ]
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
+    })
+
+    test('should return false if it is a normal user text reply to the bot', () => {
+      const msg = mockMessage('你好啊')
+      const repliedMsg = mockMessage('哈囉！我是波波。')
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(false)
     })
   })
 })

@@ -108,17 +108,28 @@ client.on('messageCreate', async (message: Message) => {
     // 檢查是否直接 tag / mention 機器人，或是回覆機器人的訊息 (即便回覆時關閉了 ping 依然觸發)
     const isReplyToBot = message.reference && message.mentions.repliedUser?.id === client.user?.id
     if (client.user && (message.mentions.has(client.user) || isReplyToBot)) {
-      const boboCmd = commandRegistry.get('bobo')
-      if (boboCmd) {
-        const botMentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g')
-        const cleanContent = message.content.replace(botMentionRegex, '').trim()
-        const args = cleanContent.split(/\s+/).filter(Boolean)
+      let repliedMsg: Message | null = null
+      if (message.reference && message.reference.messageId) {
         try {
-          await boboCmd.execute(message, args)
-        } catch (error) {
-          console.error('Error executing bobo command on mention/reply:', error)
+          repliedMsg = await message.channel.messages.fetch(message.reference.messageId)
+        } catch (err: any) {
+          console.warn('Failed to fetch referenced message in trigger check:', err.message)
         }
-        return
+      }
+
+      if (!messageCtrl.shouldSkipDialogueTrigger(message, repliedMsg)) {
+        const boboCmd = commandRegistry.get('bobo')
+        if (boboCmd) {
+          const botMentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g')
+          const cleanContent = message.content.replace(botMentionRegex, '').trim()
+          const args = cleanContent.split(/\s+/).filter(Boolean)
+          try {
+            await boboCmd.execute(message, args)
+          } catch (error) {
+            console.error('Error executing bobo command on mention/reply:', error)
+          }
+          return
+        }
       }
     }
 

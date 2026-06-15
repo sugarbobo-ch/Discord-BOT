@@ -440,3 +440,107 @@ export const searchAllCommands = (message: Message): void => {
     ;(message.channel as any).send('查無結果')
   }
 }
+
+export const isCustomCommandResponse = (message: Message): boolean => {
+  if (!message.guild) return false
+  const server = message.guild.id
+  if (!responseDict[server]) return false
+  const content = message.content
+  return Object.values(responseDict[server]).some(resp => resp === content)
+}
+
+/**
+ * 判斷是否應跳過 dialogue (Gemini chatbot) 觸發
+ */
+export const shouldSkipDialogueTrigger = (message: Message, repliedMsg: Message | null): boolean => {
+  // 1. 偵測使用者當前訊息或被回覆的訊息是否包含 fixvx 相關的網址
+  const fixvxRegex = /fixvx\.com|vxtwitter\.com|fxtwitter\.com/i
+  if (fixvxRegex.test(message.content)) {
+    return true
+  }
+  if (repliedMsg && fixvxRegex.test(repliedMsg.content)) {
+    return true
+  }
+
+  // 2. 偵測使用者當前訊息或被回覆的訊息是否為漫畫/R18連結
+  const comicPatterns = [
+    /e-hentai\.org/i,
+    /exhentai\.org/i,
+    /wnacg\.(com|org|net)/i,
+    /18comic\.(vip|org|art|ink)/i,
+    /jmcomic\.(me|co)/i,
+    /jm-comic\d*\.(art|group)/i,
+    /happymh\.com/i,
+    /pixiv\.net/i,
+    /saucenao\.com/i,
+    /nhentai\.net/i
+  ]
+  if (comicPatterns.some(pattern => pattern.test(message.content))) {
+    return true
+  }
+
+  // 3. 檢查被回覆的訊息是否為指令、斜線指令、或指令回應
+  if (repliedMsg) {
+    // A. 偵測是否為指令 (以 !, ！, /, # 開頭)
+    const trimmed = repliedMsg.content.trim()
+    const firstChar = trimmed.charAt(0)
+    if (firstChar === '!' || firstChar === '！' || firstChar === '/' || firstChar === '#') {
+      return true
+    }
+
+    // B. 偵測是否為斜線指令的回應 (由 Discord API 標記 of interaction)
+    if (repliedMsg.interaction) {
+      return true
+    }
+
+    // C. 偵測是否為自訂指令的回應
+    if (isCustomCommandResponse(repliedMsg)) {
+      return true
+    }
+
+    // D. 偵測是否為機器人的內建指令回應內容
+    const commandOutputPatterns = [
+      /點名清單|投票：|結束點名|點名狀態/i,
+      /抽獎清單|抽獎指令|開獎|已結束.*抽獎/i,
+      /機器人伺服器設定/i,
+      /指令列表|以下是可以使用的指令/i,
+      /長期記憶|我的記憶|記憶功能|記憶已設定/i,
+      /股票|走勢圖|股票歷史/i,
+      /抓到了! 是錯字!|打成「因」的/i
+    ]
+    if (commandOutputPatterns.some(pattern => pattern.test(repliedMsg.content))) {
+      return true
+    }
+
+    // E. 偵測是否為漫畫/R18 連結或 embed 內容
+    if (comicPatterns.some(pattern => pattern.test(repliedMsg.content))) {
+      return true
+    }
+
+    // 檢查被回覆訊息的 Embeds (例如漫畫預覽、Saucenao 搜尋結果)
+    if (repliedMsg.embeds && repliedMsg.embeds.length > 0) {
+      for (const embed of repliedMsg.embeds) {
+        const title = embed.title || ''
+        const author = embed.author?.name || ''
+        const footer = embed.footer?.text || ''
+        const description = embed.description || ''
+        const url = embed.url || ''
+
+        const isComicText = /紳士漫畫|禁漫天堂|嗨皮漫畫|E-Hentai|ExHentai|Saucenao|搜尋結果|相似度|畫師|社團/i
+        if (
+          comicPatterns.some(pattern => pattern.test(url)) ||
+          isComicText.test(title) ||
+          isComicText.test(author) ||
+          isComicText.test(footer) ||
+          isComicText.test(description)
+        ) {
+          return true
+        }
+      }
+    }
+  }
+
+  return false
+}
+
+
