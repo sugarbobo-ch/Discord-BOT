@@ -109,7 +109,7 @@ export class LotteryCommand implements Command {
   private handleCreateLotteryCommand(message: Message, args: string[]): void {
     if (!message.guild) return
     if (args.length < 1) {
-      message.reply('請設定抽獎活動的標題')
+      message.reply('格式錯誤，正確格式為：!開始抽獎 [活動標題] [時間(分鐘，選填)]')
       return
     }
     const server = message.guild.id

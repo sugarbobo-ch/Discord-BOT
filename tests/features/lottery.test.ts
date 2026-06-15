@@ -25,6 +25,19 @@ describe('Lottery Feature Tests', () => {
     expect(mockReply).toHaveBeenCalledWith(expect.stringContaining('已建立好 抽大獎 的抽獎'))
   })
 
+  test('should reply format error if 開始抽獎 has no title', () => {
+    const mockMsg = {
+      content: '!開始抽獎',
+      guild: { id: 'guild_lot_1' },
+      channel: { id: 'channel_lot_1', send: mockChannel.send },
+      reply: mockReply,
+      author: { id: 'user_holder' }
+    } as any
+
+    processLotteryCommands(mockMsg)
+    expect(mockReply).toHaveBeenCalledWith('格式錯誤，正確格式為：!開始抽獎 [活動標題] [時間(分鐘，選填)]')
+  })
+
   test('should join lottery with !抽獎', () => {
     const serverConfig = { id: 'guild_lot_2' }
     const channelConfig = { id: 'channel_lot_2', send: mockChannel.send }

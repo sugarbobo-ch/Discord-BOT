@@ -25,6 +25,20 @@ describe('User Feature Tests', () => {
     expect(mockReply).toHaveBeenCalledWith('已儲存，注意機器人重啟後會自動清除')
   })
 
+  test('should reply format error if keep has no arguments', () => {
+    const mockReply = vi.fn()
+    const mockMsg = {
+      content: '!keep',
+      author: { id: 'user_1', username: 'TestUser' },
+      guild: {},
+      channel: mockChannel,
+      reply: mockReply
+    } as any
+
+    keep(mockMsg)
+    expect(mockReply).toHaveBeenCalledWith('格式錯誤，正確格式為：!keep [文字訊息]')
+  })
+
   test('should keep at most 10 messages and pop oldest', () => {
     const mockReply = vi.fn()
 

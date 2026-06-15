@@ -20,6 +20,8 @@ export class UserCommand implements Command {
           }
         }
         message.reply('已儲存，注意機器人重啟後會自動清除')
+      } else {
+        message.reply('格式錯誤，正確格式為：!keep [文字訊息]')
       }
     } else if (cmd === 'keeplist') {
       if (keepDict[message.author.id] === undefined || keepDict[message.author.id].length === 0) {

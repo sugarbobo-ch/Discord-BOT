@@ -40,6 +40,8 @@ export class NsfwCommand implements Command {
   private getPixivURL(message: Message, args: string[]): void {
     if (args.length === 1) {
       ;(message.channel as any).send(`https://www.pixiv.net/artworks/${args[0]}`)
+    } else {
+      message.reply('格式錯誤，正確格式為：!pixiv [作品ID]')
     }
   }
 
@@ -369,8 +371,11 @@ export class NsfwCommand implements Command {
   }
 
   private getHentaiURL(message: Message, args: string[]): void {
+    const cmd = message.content.substring(1).split(' ')[0].toLowerCase()
     if (args.length === 1) {
       ;(message.channel as any).send(`https://nhentai.net/g/${args[0]}`)
+    } else {
+      message.reply(`格式錯誤，正確格式為：!${cmd} [車號]`)
     }
   }
 
@@ -381,6 +386,8 @@ export class NsfwCommand implements Command {
         return
       }
       ;(message.channel as any).send(`https://www.wnacg.com/photos-index-aid-${args[0]}.html`)
+    } else {
+      message.reply('格式錯誤，正確格式為：!wnacg [車號]')
     }
   }
 }

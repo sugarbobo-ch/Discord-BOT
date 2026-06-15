@@ -84,70 +84,93 @@ export const editCommand = async (message: Message, command?: string): Promise<v
     command = getCommandName(message)
   }
 
-  if (commands.length >= 3) {
-    const action = command
-    if (action === 'add' || action === 'edit') {
-      command =
-        checkMentions(commands[1]) || checkEmoji(commands[1])
-          ? commands[1]
-          : commands[1].toLowerCase().trimStart()
-      if (command.length === 0) {
-        message.reply('格式錯誤，請確認空白位置和數量正確')
-        return
-      }
-      if (commandRegistry.get(command)) {
-        message.reply(`⛔ 格式錯誤，"${command}" 是系統保留指令或關鍵字，不可使用此名稱。`)
-        return
-      }
-      if (command in responseDict[server]) {
-        if (action === 'add') {
-          if (responseDict[server][command] === '隨機圖片') {
-            message.reply(
-              `${command} 指令目前是設定回覆隨機圖片，若要增加圖片到這個指令請使用 !addimg，若要把隨機圖片變成指定回覆文字訊息(或是單張圖片網址)請使用 !edit`
-            )
-            return
-          }
+  const action = command
+
+  if (action === 'add' || action === 'edit') {
+    if (commands.length < 3) {
+      message.reply(`格式錯誤，正確格式為：!${action} [指令名稱] [BOT回覆內容]`)
+      return
+    }
+    const targetCmd =
+      checkMentions(commands[1]) || checkEmoji(commands[1])
+        ? commands[1]
+        : commands[1].toLowerCase().trimStart()
+    if (targetCmd.length === 0) {
+      message.reply('格式錯誤，請確認空白位置和數量正確')
+      return
+    }
+    if (commandRegistry.get(targetCmd)) {
+      message.reply(`⛔ 格式錯誤，"${targetCmd}" 是系統保留指令或關鍵字，不可使用此名稱。`)
+      return
+    }
+    if (targetCmd in responseDict[server]) {
+      if (action === 'add') {
+        if (responseDict[server][targetCmd] === '隨機圖片') {
+          message.reply(
+            `${targetCmd} 指令目前是設定回覆隨機圖片，若要增加圖片到這個指令請使用 !addimg，若要把隨機圖片變成指定回覆文字訊息(或是單張圖片網址)請使用 !edit`
+          )
+          return
         }
       }
-      responseDict[server][command] = content.replace(/^([^ ]+ ){2}/, '')
-      db.prepare(
-        'INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)'
-      ).run(server, command, responseDict[server][command])
+    }
+    responseDict[server][targetCmd] = content.replace(/^([^ ]+ ){2}/, '')
+    db.prepare(
+      'INSERT OR REPLACE INTO commands (server_id, name, response) VALUES (?, ?, ?)'
+    ).run(server, targetCmd, responseDict[server][targetCmd])
 
-      if (action === 'add') {
-        message.reply(`${command} 指令已經新增到列表中，內容： ${responseDict[server][command]}`)
-      } else {
-        message.reply(`${command} 指令已經更新，內容： ${responseDict[server][command]}`)
-      }
-    } else if (command === 'addimg') {
-      await addImageCommand(message)
-    } else if (command === 'send') {
-      sendChannelMessage(message)
-    } else if (command === 'delimg') {
-      await removeImageFile(message)
+    if (action === 'add') {
+      message.reply(`${targetCmd} 指令已經新增到列表中，內容： ${responseDict[server][targetCmd]}`)
+    } else {
+      message.reply(`${targetCmd} 指令已經更新，內容： ${responseDict[server][targetCmd]}`)
     }
-  } else if (commands.length === 2) {
-    if (command === 'remove') {
-      const targetCmd =
-        checkMentions(commands[1]) || checkEmoji(commands[1])
-          ? commands[1]
-          : commands[1].toLowerCase()
-      if (targetCmd in responseDict[server]) {
-        delete responseDict[server][targetCmd]
-        db.prepare('DELETE FROM commands WHERE server_id = ? AND name = ?').run(server, targetCmd)
-        message.reply(`${targetCmd} 指令已經刪除`)
-      } else {
-        message.reply(`${targetCmd} 指令未在清單內`)
-      }
-    } else if (command === 'reset' && commands[1] === 'server') {
-      await resetServer(server)
-    } else if (command === '大全') {
-      searchAllCommands(message)
+  } else if (action === 'addimg') {
+    if (commands.length < 3) {
+      message.reply('格式錯誤，正確格式為：!addimg [指令名稱] [圖片網址]')
+      return
     }
-  } else if (commands.length === 1) {
-    if (command === 'list' || command === 'help') {
-      displayAvailableCommands(message)
+    await addImageCommand(message)
+  } else if (action === 'delimg') {
+    if (commands.length < 3) {
+      message.reply('格式錯誤，正確格式為：!delimg [指令名稱/資料夾名稱] [檔案名稱含副檔名]')
+      return
     }
+    await removeImageFile(message)
+  } else if (action === 'send') {
+    if (commands.length < 3) {
+      message.reply('格式錯誤，正確格式為：!send [頻道ID] [訊息內容]')
+      return
+    }
+    sendChannelMessage(message)
+  } else if (action === 'remove') {
+    if (commands.length !== 2) {
+      message.reply('格式錯誤，正確格式為：!remove [指令名稱]')
+      return
+    }
+    const targetCmd =
+      checkMentions(commands[1]) || checkEmoji(commands[1])
+        ? commands[1]
+        : commands[1].toLowerCase()
+    if (targetCmd in responseDict[server]) {
+      delete responseDict[server][targetCmd]
+      db.prepare('DELETE FROM commands WHERE server_id = ? AND name = ?').run(server, targetCmd)
+      message.reply(`${targetCmd} 指令已經刪除`)
+    } else {
+      message.reply(`${targetCmd} 指令未在清單內`)
+    }
+  } else if (action === 'reset') {
+    if (commands.length !== 2 || commands[1] !== 'server') {
+      message.reply('格式錯誤，正確格式為：!reset server')
+      return
+    }
+    await resetServer(server)
+  } else if (action === '大全') {
+    if (commands.length !== 2) {
+      message.reply('格式錯誤，正確格式為：!大全 [關鍵字]')
+      return
+    }
+    searchAllCommands(message)
+  } else if (action === 'list' || action === 'help') {
+    displayAvailableCommands(message)
   }
 }
 

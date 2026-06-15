@@ -351,6 +351,52 @@ describe('Message Feature Tests', () => {
 
       expect(searchMsg.channel.send).toHaveBeenCalledWith(expect.stringContaining('search_cmd_1'))
     })
+
+    test('should reply format errors for incorrect custom commands format', async () => {
+      // !add
+      const addMsg = mockMessage('!add name', testServerId)
+      await editCommand(addMsg, 'add')
+      expect(addMsg.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!add [指令名稱] [BOT回覆內容]')
+
+      // !edit
+      const editMsg = mockMessage('!edit name', testServerId)
+      await editCommand(editMsg, 'edit')
+      expect(editMsg.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!edit [指令名稱] [BOT回覆內容]')
+
+      // !remove
+      const removeMsg = mockMessage('!remove', testServerId)
+      await editCommand(removeMsg, 'remove')
+      expect(removeMsg.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!remove [指令名稱]')
+
+      // !reset
+      const resetMsg1 = mockMessage('!reset', testServerId)
+      await editCommand(resetMsg1, 'reset')
+      expect(resetMsg1.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!reset server')
+
+      const resetMsg2 = mockMessage('!reset notserver', testServerId)
+      await editCommand(resetMsg2, 'reset')
+      expect(resetMsg2.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!reset server')
+
+      // !addimg
+      const addimgMsg = mockMessage('!addimg cmd', testServerId)
+      await editCommand(addimgMsg, 'addimg')
+      expect(addimgMsg.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!addimg [指令名稱] [圖片網址]')
+
+      // !delimg
+      const delimgMsg = mockMessage('!delimg cmd', testServerId)
+      await editCommand(delimgMsg, 'delimg')
+      expect(delimgMsg.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!delimg [指令名稱/資料夾名稱] [檔案名稱含副檔名]')
+
+      // !send
+      const sendMsg = mockMessage('!send channel', testServerId)
+      await editCommand(sendMsg, 'send')
+      expect(sendMsg.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!send [頻道ID] [訊息內容]')
+
+      // !大全
+      const searchMsg = mockMessage('!大全', testServerId)
+      await editCommand(searchMsg, '大全')
+      expect(searchMsg.reply).toHaveBeenCalledWith('格式錯誤，正確格式為：!大全 [關鍵字]')
+    })
   })
 
   describe('CustomCommand Routing Integration Tests', () => {
