@@ -639,7 +639,7 @@ describe('Gemini Utility Tests', () => {
           expect.objectContaining({
             parts: expect.arrayContaining([
               expect.objectContaining({
-                text: expect.stringContaining('限制在 15 字以內')
+                text: expect.stringContaining('限制在 100 字以內')
               })
             ])
           })
@@ -655,7 +655,7 @@ describe('Gemini Utility Tests', () => {
           expect.objectContaining({
             parts: expect.arrayContaining([
               expect.objectContaining({
-                text: expect.stringContaining('限制在 30 字以內')
+                text: expect.stringContaining('限制在 150 字以內')
               })
             ])
           })
@@ -671,7 +671,7 @@ describe('Gemini Utility Tests', () => {
           expect.objectContaining({
             parts: expect.arrayContaining([
               expect.objectContaining({
-                text: expect.stringContaining('回覆上限嚴格限制在 200 字以內')
+                text: expect.stringContaining('回覆上限限制在 500 字以內')
               })
             ])
           })
