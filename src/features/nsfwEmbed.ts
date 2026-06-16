@@ -147,6 +147,142 @@ export const fetchWnacgMetadata = async (url: string): Promise<EmbedMetadata | n
 /**
  * 取得 nhentai 的 Metadata (經由 nhentai.xxx 鏡像)
  */
+/**
+ * Fallback to fetching nhentai metadata from nhentai.to if nhentai.net fails
+ */
+const fetchFromNhentaiToFallback = async (id: string, url: string): Promise<EmbedMetadata | null> => {
+  const targetUrl = `https://nhentai.to/g/${id}/`
+  try {
+    const res = await axios.get(targetUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+      },
+      timeout: 10000
+    })
+
+    const html = res.data
+    const scriptMatch = html.match(/<script[^>]*>([\s\S]*?new\s+N\.gallery\([\s\S]*?)<\/script>/i)
+    if (!scriptMatch) {
+      console.error(`[fetchFromNhentaiToFallback] No N.gallery script tag found for ID: ${id}`)
+      return null
+    }
+
+    const scriptContent = scriptMatch[1]
+    const startIndex = scriptContent.indexOf('new N.gallery({')
+    if (startIndex === -1) {
+      console.error(`[fetchFromNhentaiToFallback] new N.gallery({ not found for ID: ${id}`)
+      return null
+    }
+
+    const jsonStart = scriptContent.indexOf('{', startIndex)
+    let braceCount = 0
+    let jsonEnd = -1
+    let inString = false
+    let stringChar = ''
+
+    for (let i = jsonStart; i < scriptContent.length; i++) {
+      const char = scriptContent[i]
+      if (inString) {
+        if (char === stringChar && scriptContent[i - 1] !== '\\') {
+          inString = false
+        }
+      } else {
+        if (char === '"' || char === "'") {
+          inString = true
+          stringChar = char
+        } else if (char === '{') {
+          braceCount++
+        } else if (char === '}') {
+          braceCount--
+          if (braceCount === 0) {
+            jsonEnd = i
+            break
+          }
+        }
+      }
+    }
+
+    if (jsonEnd === -1) {
+      console.error(`[fetchFromNhentaiToFallback] Closing brace for N.gallery not found for ID: ${id}`)
+      return null
+    }
+
+    const rawJson = scriptContent.slice(jsonStart, jsonEnd + 1)
+    // Safe evaluation of JS object literal with trailing commas
+    const bodyData = Function(`return (${rawJson})`)()
+
+    const englishTitle = bodyData.title?.english || ''
+    const japaneseTitle = bodyData.title?.japanese || ''
+    let title = englishTitle || japaneseTitle || `nhentai作品 - ${id}`
+    title = title.replace(/\s*&raquo;\s*nhentai\s*$/i, '').trim()
+
+    let coverUrl = ''
+    if (bodyData.media_id && bodyData.images?.cover) {
+      const extMap: Record<string, string> = {
+        p: 'png',
+        j: 'jpg',
+        g: 'gif'
+      }
+      const ext = extMap[bodyData.images.cover.t] || 'jpg'
+      coverUrl = `https://t.nhentai.net/galleries/${bodyData.media_id}/cover.${ext}`
+    }
+
+    const artists: string[] = []
+    const parodies: string[] = []
+    const characters: string[] = []
+    const groups: string[] = []
+    const tags: string[] = []
+    const languages: string[] = []
+    let category = ''
+
+    if (bodyData.tags && Array.isArray(bodyData.tags)) {
+      for (const t of bodyData.tags) {
+        if (t.type === 'artist') {
+          artists.push(t.name)
+        } else if (t.type === 'parody') {
+          parodies.push(t.name)
+        } else if (t.type === 'character') {
+          characters.push(t.name)
+        } else if (t.type === 'group') {
+          groups.push(t.name)
+        } else if (t.type === 'tag') {
+          tags.push(t.name)
+        } else if (t.type === 'language') {
+          languages.push(t.name)
+        } else if (t.type === 'category') {
+          category = t.name
+        }
+      }
+    }
+
+    const pagesCount = bodyData.num_pages ? parseInt(bodyData.num_pages) || bodyData.num_pages : undefined
+
+    return {
+      title,
+      url,
+      coverUrl,
+      author: artists.join(', ') || '未知',
+      category,
+      tags,
+      siteName: 'nhentai',
+      color: 0xed2553,
+      parodies,
+      characters,
+      groups,
+      languages,
+      pages: pagesCount
+    }
+  } catch (error: any) {
+    console.error(`[fetchFromNhentaiToFallback] Error fetching nhentai ${id} from nhentai.to fallback:`, error.message || error)
+  }
+  return null
+}
+
+/**
+ * 取得 nhentai 的 Metadata (經由 nhentai.xxx 鏡像)
+ */
 export const fetchNhentaiMetadata = async (urlOrId: string): Promise<EmbedMetadata | null> => {
   let id = ''
   let url = ''
@@ -179,8 +315,8 @@ export const fetchNhentaiMetadata = async (urlOrId: string): Promise<EmbedMetada
       /<script\s+type="application\/json"\s+data-sveltekit-fetched\s+data-url="\/api\/v2\/galleries\/\d+[^"]*">([\s\S]*?)<\/script>/i
     )
     if (!scriptMatch) {
-      console.error(`[fetchNhentaiMetadata] SvelteKit script tag not found for ID: ${id}`)
-      return null
+      console.warn(`[fetchNhentaiMetadata] SvelteKit script tag not found for ID: ${id} on nhentai.net. Trying fallback...`)
+      return await fetchFromNhentaiToFallback(id, url)
     }
 
     const outerData = JSON.parse(scriptMatch[1])
@@ -242,9 +378,9 @@ export const fetchNhentaiMetadata = async (urlOrId: string): Promise<EmbedMetada
       pages: pagesCount
     }
   } catch (error: any) {
-    console.error(`[fetchNhentaiMetadata] Error fetching nhentai ${id}:`, error.message || error)
+    console.warn(`[fetchNhentaiMetadata] Error fetching nhentai ${id} from nhentai.net: ${error.message || error}. Trying fallback...`)
+    return await fetchFromNhentaiToFallback(id, url)
   }
-  return null
 }
 
 /**

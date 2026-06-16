@@ -416,4 +416,72 @@ describe('NSFW Embed Features Tests', () => {
     expect(fields).toContainEqual(expect.objectContaining({ name: '頁數 (Pages)', value: '464', inline: true }))
     expect(fields).toContainEqual(expect.objectContaining({ name: '標籤 (Tags)', value: 'lolicon, ponytail', inline: false }))
   })
+
+  test('should fallback to nhentai.to if nhentai.net scraping fails', async () => {
+    mockMessage.content = 'https://nhentai.net/g/177013/'
+
+    // Mock got-scraping to fail (throw error)
+    const mockGotScraping = vi.fn().mockRejectedValueOnce(new Error('Cloudflare blocked'))
+    vi.mocked(getGotScraping).mockResolvedValueOnce(mockGotScraping)
+
+    // Mock axios.get for the fallback URL
+    const mockFallbackHtml = `
+      <script>
+        var gallery = new N.gallery({
+          "id": 177013,
+          "media_id": "905331",
+          "title": {
+            "english": "COMIC LO 2016-08 (Fallback)",
+            "japanese": "COMIC LO 2016年8月号 (Fallback)"
+          },
+          "images": {
+            "cover": { "t": "p", "w": 350, "h": 494 }
+          },
+          "num_pages": 464,
+          "tags": [
+            { "type": "artist", "name": "kamanbeer" },
+            { "type": "language", "name": "chinese" }
+          ]
+        });
+      </script>
+    `
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      status: 200,
+      data: mockFallbackHtml
+    })
+
+    checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
+
+    await vi.runAllTimersAsync()
+
+    expect(mockGotScraping).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://nhentai.net/g/177013/'
+      })
+    )
+
+    // Should call fallback axios.get
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://nhentai.to/g/177013/',
+      expect.any(Object)
+    )
+
+    expect(mockMessage.channel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.any(Object)
+        ])
+      })
+    )
+
+    const sendCallArgs = vi.mocked(mockMessage.channel.send).mock.calls[0][0] as any
+    const embed = sendCallArgs.embeds[0]
+    expect(embed.data.title).toBe('COMIC LO 2016-08 (Fallback)')
+    expect(embed.data.url).toBe('https://nhentai.net/g/177013/')
+    expect(embed.data.image.url).toBe('https://t.nhentai.net/galleries/905331/cover.png')
+    
+    const fields = embed.data.fields
+    expect(fields).toContainEqual(expect.objectContaining({ name: '作者 (Artist)', value: 'kamanbeer', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '語言 (Language)', value: 'chinese', inline: true }))
+  })
 })
