@@ -413,7 +413,7 @@ export class NsfwCommand implements Command {
         if (metadata) {
           const embed = createEmbed(metadata)
           if (statusMessage) {
-            await statusMessage.edit({ content: '讀取完成！', embeds: [embed] })
+            await statusMessage.edit({ content: '', embeds: [embed] })
           } else {
             ;(message.channel as any).send({ embeds: [embed] })
           }
@@ -470,7 +470,7 @@ export class NsfwCommand implements Command {
         if (metadata) {
           const embed = createEmbed(metadata)
           if (statusMessage) {
-            await statusMessage.edit({ content: '讀取完成！', embeds: [embed] })
+            await statusMessage.edit({ content: '', embeds: [embed] })
           } else {
             ;(message.channel as any).send({ embeds: [embed] })
           }

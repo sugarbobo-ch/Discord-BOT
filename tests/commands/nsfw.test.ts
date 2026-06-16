@@ -141,7 +141,7 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
 
     expect(fetchWnacgMetadata).toHaveBeenCalledWith('https://www.wnacg.com/photos-index-aid-301531.html')
     expect(mockStatusMsg.edit).toHaveBeenCalledWith({
-      content: '讀取完成！',
+      content: '',
       embeds: [expect.objectContaining({ data: mockMeta })]
     })
   })
@@ -171,7 +171,7 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
 
     expect(fetchNhentaiMetadata).toHaveBeenCalledWith('177013')
     expect(mockStatusMsg.edit).toHaveBeenCalledWith({
-      content: '讀取完成！',
+      content: '',
       embeds: [expect.objectContaining({ data: mockMeta })]
     })
   })

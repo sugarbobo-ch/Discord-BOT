@@ -2,8 +2,12 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
 import { checkAndAddNsfwEmbed } from '../../src/features/nsfwEmbed'
 import { Message } from 'discord.js'
+import { getGotScraping } from '../../src/utils/gotScrapingHelper'
 
 vi.mock('axios')
+vi.mock('../../src/utils/gotScrapingHelper', () => ({
+  getGotScraping: vi.fn()
+}))
 
 describe('NSFW Embed Features Tests', () => {
   let mockMessage: any
@@ -365,35 +369,26 @@ describe('NSFW Embed Features Tests', () => {
     mockMessage.content = 'https://nhentai.net/g/177013/'
 
     const mockHtml = `
-      <h1>COMIC LO 2016-08</h1>
-      <h2>COMIC LO 2016年8月号</h2>
-      <div class="cover">
-        <img src="https://i3.nhentaimg.com/007/6bedcf5741/cover.jpg" />
-      </div>
-      <li class='tags'><span class='text'>Artists</span>
-        <a class='tag_btn'><span class='tag_name'>mdo-h</span></a>
-      </li>
-      <li class='tags'><span class='text'>Tags</span>
-        <a class='tag_btn'><span class='tag_name'>lolicon</span></a>
-      </li>
-      <li class='tags'><span class='text'>Category</span>
-        <a class='tag_btn'><span class='tag_name'>manga</span></a>
-      </li>
-      <span class="tag_name pages">464</span>
+      <script type="application/json" data-sveltekit-fetched data-url="/api/v2/galleries/177013?include=related%2Csuggestions%2Ccomments">
+      {"status":200,"statusText":"OK","headers":{},"body":"{\\"id\\":177013,\\"media_id\\":\\"905331\\",\\"title\\":{\\"english\\":\\"COMIC LO 2016-08\\",\\"japanese\\":\\"COMIC LO 2016年8月号\\"},\\"cover\\":{\\"path\\":\\"galleries/905331/cover.jpg\\"},\\"num_pages\\":464,\\"tags\\":[{\\"type\\":\\"artist\\",\\"name\\":\\"kamanbeer\\"},{\\"type\\":\\"group\\",\\"name\\":\\"tareme sijou syugi\\"},{\\"type\\":\\"parody\\",\\"name\\":\\"blue archive\\"},{\\"type\\":\\"character\\",\\"name\\":\\"kei tendou\\"},{\\"type\\":\\"tag\\",\\"name\\":\\"lolicon\\"},{\\"type\\":\\"tag\\",\\"name\\":\\"ponytail\\"},{\\"type\\":\\"language\\",\\"name\\":\\"translated\\"},{\\"type\\":\\"language\\",\\"name\\":\\"chinese\\"},{\\"type\\":\\"category\\",\\"name\\":\\"doujinshi\\"}]}"}
+      </script>
     `
 
-    vi.mocked(axios.get).mockResolvedValueOnce({
-      status: 200,
-      data: mockHtml
+    const mockGotScraping = vi.fn().mockResolvedValueOnce({
+      statusCode: 200,
+      body: mockHtml,
+      headers: {}
     })
+    vi.mocked(getGotScraping).mockResolvedValueOnce(mockGotScraping)
 
     checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
 
     await vi.runAllTimersAsync()
 
-    expect(axios.get).toHaveBeenCalledWith(
-      'https://nhentai.xxx/g/177013/',
-      expect.any(Object)
+    expect(mockGotScraping).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://nhentai.net/g/177013/'
+      })
     )
 
     expect(mockMessage.channel.send).toHaveBeenCalledWith(
@@ -409,11 +404,16 @@ describe('NSFW Embed Features Tests', () => {
     expect(embed.data.title).toBe('COMIC LO 2016-08')
     expect(embed.data.url).toBe('https://nhentai.net/g/177013/')
     expect(embed.data.color).toBe(0xed2553)
-    expect(embed.data.image.url).toBe('https://i3.nhentaimg.com/007/6bedcf5741/cover.jpg')
+    expect(embed.data.image.url).toBe('https://t.nhentai.net/galleries/905331/cover.jpg')
     
     const fields = embed.data.fields
-    expect(fields).toContainEqual(expect.objectContaining({ name: '作者/漢化', value: 'mdo-h' }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '分類', value: 'manga' }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '標籤', value: 'lolicon, 464 pages' }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '作者 (Artist)', value: 'kamanbeer', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '社團 (Group)', value: 'tareme sijou syugi', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '原作 (Parody)', value: 'blue archive', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '角色 (Character)', value: 'kei tendou', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '語言 (Language)', value: 'translated, chinese', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '分類 (Category)', value: 'doujinshi', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '頁數 (Pages)', value: '464', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '標籤 (Tags)', value: 'lolicon, ponytail', inline: false }))
   })
 })

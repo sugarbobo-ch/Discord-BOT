@@ -22,6 +22,8 @@
     "compromise": "^14.15.1",
     "discord.js": "^14.26.4",
     "forever": "^4.0.3",
+    "got": "^15.0.5",
+    "got-scraping": "^4.2.1",
     "mem0ai": "^3.0.6",
     "moment": "^2.30.1",
     "natural": "^8.1.1",

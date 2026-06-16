@@ -1,5 +1,6 @@
 import { Message, EmbedBuilder } from 'discord.js'
 import axios from 'axios'
+import { getGotScraping } from '../utils/gotScrapingHelper'
 
 interface EmbedMetadata {
   title: string
@@ -10,6 +11,11 @@ interface EmbedMetadata {
   tags: string[]
   siteName: string
   color: number
+  parodies?: string[]
+  characters?: string[]
+  groups?: string[]
+  languages?: string[]
+  pages?: number
 }
 
 // 支援的網址正則表達式
@@ -155,68 +161,70 @@ export const fetchNhentaiMetadata = async (urlOrId: string): Promise<EmbedMetada
     return null
   }
 
-  const targetUrl = `https://nhentai.xxx/g/${id}/`
+  const targetUrl = `https://nhentai.net/g/${id}/`
   try {
-    const res = await axios.get(targetUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+    const gotScraping = await getGotScraping()
+    const res = await gotScraping({
+      url: targetUrl,
+      headerGeneratorOptions: {
+        browsers: [{ name: 'chrome', minVersion: 110 }],
+        devices: ['desktop'],
+        locales: ['zh-TW', 'zh', 'en-US', 'en']
       },
-      timeout: 10000
+      timeout: { request: 10000 }
     })
 
-    const html = res.data
-    const titleMatch = html.match(/<h1>([^<]+)<\/h1>/i) || html.match(/<title>([^<]+)<\/title>/i)
-    let englishTitle = titleMatch ? titleMatch[1].trim() : ''
-    const jpTitleMatch = html.match(/<h2>([^<]+)<\/h2>/i)
-    let japaneseTitle = jpTitleMatch ? jpTitleMatch[1].trim() : ''
+    const html = res.body
+    const scriptMatch = html.match(
+      /<script\s+type="application\/json"\s+data-sveltekit-fetched\s+data-url="\/api\/v2\/galleries\/\d+[^"]*">([\s\S]*?)<\/script>/i
+    )
+    if (!scriptMatch) {
+      console.error(`[fetchNhentaiMetadata] SvelteKit script tag not found for ID: ${id}`)
+      return null
+    }
 
+    const outerData = JSON.parse(scriptMatch[1])
+    const bodyData = JSON.parse(outerData.body)
+
+    const englishTitle = bodyData.title?.english || ''
+    const japaneseTitle = bodyData.title?.japanese || ''
     let title = englishTitle || japaneseTitle || `nhentai作品 - ${id}`
     title = title.replace(/\s*&raquo;\s*nhentai\s*$/i, '').trim()
 
-    const imgMatch = html.match(/class="cover"[^]*?<img[^>]+(?:src|data-src)="([^"]+)"/i)
-    let coverUrl = imgMatch ? imgMatch[1] : ''
-    if (coverUrl.startsWith('//')) {
-      coverUrl = 'https:' + coverUrl
+    let coverUrl = ''
+    if (bodyData.cover && bodyData.cover.path) {
+      coverUrl = `https://t.nhentai.net/${bodyData.cover.path}`
     }
 
-    const artistBlockMatch = html.match(/<li class='tags'><span class='text'>Artists<\/span>([\s\S]*?)<\/li>/i)
     const artists: string[] = []
-    if (artistBlockMatch) {
-      const artistRegex = /<span class='tag_name'>([\s\S]*?)<\/span>/gi
-      let match
-      while ((match = artistRegex.exec(artistBlockMatch[1])) !== null) {
-        const artistName = match[1].replace(/<[^>]+>/g, '').trim()
-        if (artistName) artists.push(artistName)
-      }
-    }
-
-    const tagsBlockMatch = html.match(/<li class='tags'><span class='text'>Tags<\/span>([\s\S]*?)<\/li>/i)
+    const parodies: string[] = []
+    const characters: string[] = []
+    const groups: string[] = []
     const tags: string[] = []
-    if (tagsBlockMatch) {
-      const tagRegex = /<span class='tag_name'>([\s\S]*?)<\/span>/gi
-      let match
-      while ((match = tagRegex.exec(tagsBlockMatch[1])) !== null) {
-        const tagName = match[1].replace(/<[^>]+>/g, '').trim()
-        if (tagName) tags.push(tagName)
+    const languages: string[] = []
+    let category = ''
+
+    if (bodyData.tags && Array.isArray(bodyData.tags)) {
+      for (const t of bodyData.tags) {
+        if (t.type === 'artist') {
+          artists.push(t.name)
+        } else if (t.type === 'parody') {
+          parodies.push(t.name)
+        } else if (t.type === 'character') {
+          characters.push(t.name)
+        } else if (t.type === 'group') {
+          groups.push(t.name)
+        } else if (t.type === 'tag') {
+          tags.push(t.name)
+        } else if (t.type === 'language') {
+          languages.push(t.name)
+        } else if (t.type === 'category') {
+          category = t.name
+        }
       }
     }
 
-    const categoryBlockMatch = html.match(/<li class='tags'><span class='text'>Category<\/span>([\s\S]*?)<\/li>/i)
-    let category = ''
-    if (categoryBlockMatch) {
-      const catMatch = categoryBlockMatch[1].match(/<span class='tag_name'>([^<]+)<\/span>/i)
-      if (catMatch) category = catMatch[1].trim()
-    }
-
-    const pagesMatch = html.match(/<span class="tag_name pages">(\d+)<\/span>/i)
-    const pagesCount = pagesMatch ? pagesMatch[1] : ''
-
-    const finalTags = [...tags]
-    if (pagesCount) {
-      finalTags.push(`${pagesCount} pages`)
-    }
+    const pagesCount = bodyData.num_pages ? parseInt(bodyData.num_pages) || bodyData.num_pages : undefined
 
     return {
       title,
@@ -224,9 +232,14 @@ export const fetchNhentaiMetadata = async (urlOrId: string): Promise<EmbedMetada
       coverUrl,
       author: artists.join(', ') || '未知',
       category,
-      tags: finalTags,
+      tags,
       siteName: 'nhentai',
-      color: 0xed2553
+      color: 0xed2553,
+      parodies,
+      characters,
+      groups,
+      languages,
+      pages: pagesCount
     }
   } catch (error: any) {
     console.error(`[fetchNhentaiMetadata] Error fetching nhentai ${id}:`, error.message || error)
@@ -487,45 +500,72 @@ export const createEmbed = (meta: EmbedMetadata): EmbedBuilder => {
     embed.setImage(meta.coverUrl)
   }
 
-  if (meta.author) {
-    embed.addFields({ name: '作者/漢化', value: meta.author, inline: true })
-  }
+  if (meta.siteName === 'nhentai') {
+    if (meta.author) {
+      embed.addFields({ name: '作者 (Artist)', value: meta.author, inline: true })
+    }
+    if (meta.groups && meta.groups.length > 0) {
+      embed.addFields({ name: '社團 (Group)', value: meta.groups.join(', '), inline: true })
+    }
+    if (meta.parodies && meta.parodies.length > 0) {
+      embed.addFields({ name: '原作 (Parody)', value: meta.parodies.join(', '), inline: true })
+    }
+    if (meta.characters && meta.characters.length > 0) {
+      embed.addFields({ name: '角色 (Character)', value: meta.characters.join(', '), inline: true })
+    }
+    if (meta.languages && meta.languages.length > 0) {
+      embed.addFields({ name: '語言 (Language)', value: meta.languages.join(', '), inline: true })
+    }
+    if (meta.category) {
+      embed.addFields({ name: '分類 (Category)', value: meta.category, inline: true })
+    }
+    if (meta.pages) {
+      embed.addFields({ name: '頁數 (Pages)', value: `${meta.pages}`, inline: true })
+    }
+    if (meta.tags && meta.tags.length > 0) {
+      embed.addFields({ name: '標籤 (Tags)', value: meta.tags.slice(0, 20).join(', '), inline: false })
+    }
+  } else {
+    if (meta.author) {
+      embed.addFields({ name: '作者/漢化', value: meta.author, inline: true })
+    }
 
-  if (meta.category) {
-    embed.addFields({ name: '分類', value: meta.category, inline: true })
-  }
+    if (meta.category) {
+      embed.addFields({ name: '分類', value: meta.category, inline: true })
+    }
 
-  if (meta.tags && meta.tags.length > 0) {
-    // 如果是 E-Hentai，對標籤進行更細緻的分類顯示
-    if (meta.siteName.includes('Hentai')) {
-      const artistTags = meta.tags.filter(t => t.startsWith('artist:')).map(t => t.substring(7))
-      const groupTags = meta.tags.filter(t => t.startsWith('group:')).map(t => t.substring(6))
-      const femaleTags = meta.tags.filter(t => t.startsWith('female:')).map(t => t.substring(7))
-      const maleTags = meta.tags.filter(t => t.startsWith('male:')).map(t => t.substring(5))
-      const miscTags = meta.tags.filter(t => !t.includes(':'))
+    if (meta.tags && meta.tags.length > 0) {
+      // 如果是 E-Hentai，對標籤進行更細緻的分類顯示
+      if (meta.siteName.includes('Hentai')) {
+        const artistTags = meta.tags.filter(t => t.startsWith('artist:')).map(t => t.substring(7))
+        const groupTags = meta.tags.filter(t => t.startsWith('group:')).map(t => t.substring(6))
+        const femaleTags = meta.tags.filter(t => t.startsWith('female:')).map(t => t.substring(7))
+        const maleTags = meta.tags.filter(t => t.startsWith('male:')).map(t => t.substring(5))
+        const miscTags = meta.tags.filter(t => !t.includes(':'))
 
-      if (artistTags.length > 0) {
-        embed.addFields({ name: '畫師 (Artist)', value: artistTags.join(', '), inline: true })
+        if (artistTags.length > 0) {
+          embed.addFields({ name: '畫師 (Artist)', value: artistTags.join(', '), inline: true })
+        }
+        if (groupTags.length > 0) {
+          embed.addFields({ name: '社團 (Group)', value: groupTags.join(', '), inline: true })
+        }
+        if (maleTags.length > 0) {
+          embed.addFields({ name: '男性屬性', value: maleTags.join(', '), inline: false })
+        }
+        if (femaleTags.length > 0) {
+          embed.addFields({ name: '女性屬性', value: femaleTags.join(', '), inline: false })
+        }
+        if (miscTags.length > 0) {
+          embed.addFields({
+            name: '其他標籤',
+            value: miscTags.slice(0, 15).join(', '),
+            inline: false
+          })
+        }
+      } else {
+        // 一般標籤顯示，長度限制
+        embed.addFields({ name: '標籤', value: meta.tags.slice(0, 20).join(', '), inline: false })
       }
-      if (groupTags.length > 0) {
-        embed.addFields({ name: '社團 (Group)', value: groupTags.join(', '), inline: true })
-      }
-      if (maleTags.length > 0) {
-        embed.addFields({ name: '男性屬性', value: maleTags.join(', '), inline: false })
-      }
-      if (femaleTags.length > 0) {
-        embed.addFields({ name: '女性屬性', value: femaleTags.join(', '), inline: false })
-      }
-      if (miscTags.length > 0) {
-        embed.addFields({
-          name: '其他標籤',
-          value: miscTags.slice(0, 15).join(', '),
-          inline: false
-        })
-      }
-    } else {
-      // 一般標籤顯示，長度限制
-      embed.addFields({ name: '標籤', value: meta.tags.slice(0, 20).join(', '), inline: false })
     }
   }
 
