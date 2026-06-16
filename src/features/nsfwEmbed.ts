@@ -1,6 +1,7 @@
 import { Message, EmbedBuilder } from 'discord.js'
 import axios from 'axios'
 import { getGotScraping } from '../utils/gotScrapingHelper'
+import { getNsfwSetting } from '../utils/db'
 
 interface EmbedMetadata {
   title: string
@@ -637,29 +638,62 @@ export const createEmbed = (meta: EmbedMetadata): EmbedBuilder => {
   }
 
   if (meta.siteName === 'nhentai') {
-    if (meta.author) {
-      embed.addFields({ name: '作者 (Artist)', value: meta.author, inline: true })
+    if (meta.author && meta.author !== '未知') {
+      const artistLinks = meta.author.split(', ').map(name => {
+        const slug = name.toLowerCase().replace(/\s+/g, '-')
+        return `[${name}](https://nhentai.net/artist/${slug}/)`
+      }).join(', ')
+      embed.addFields({ name: '作者 (Artist)', value: artistLinks, inline: true })
     }
     if (meta.groups && meta.groups.length > 0) {
-      embed.addFields({ name: '社團 (Group)', value: meta.groups.join(', '), inline: true })
+      const groupLinks = meta.groups.map(name => {
+        const slug = name.toLowerCase().replace(/\s+/g, '-')
+        return `[${name}](https://nhentai.net/group/${slug}/)`
+      }).join(', ')
+      embed.addFields({ name: '社團 (Group)', value: groupLinks, inline: true })
     }
     if (meta.parodies && meta.parodies.length > 0) {
-      embed.addFields({ name: '原作 (Parody)', value: meta.parodies.join(', '), inline: true })
+      const parodyLinks = meta.parodies.map(name => {
+        const slug = name.toLowerCase().replace(/\s+/g, '-')
+        return `[${name}](https://nhentai.net/parody/${slug}/)`
+      }).join(', ')
+      embed.addFields({ name: '原作 (Parody)', value: parodyLinks, inline: true })
     }
     if (meta.characters && meta.characters.length > 0) {
-      embed.addFields({ name: '角色 (Character)', value: meta.characters.join(', '), inline: true })
+      const charLinks = meta.characters.map(name => {
+        const slug = name.toLowerCase().replace(/\s+/g, '-')
+        return `[${name}](https://nhentai.net/character/${slug}/)`
+      }).join(', ')
+      embed.addFields({ name: '角色 (Character)', value: charLinks, inline: true })
     }
     if (meta.languages && meta.languages.length > 0) {
-      embed.addFields({ name: '語言 (Language)', value: meta.languages.join(', '), inline: true })
+      const langLinks = meta.languages.map(name => {
+        const slug = name.toLowerCase().replace(/\s+/g, '-')
+        return `[${name}](https://nhentai.net/language/${slug}/)`
+      }).join(', ')
+      embed.addFields({ name: '語言 (Language)', value: langLinks, inline: true })
     }
     if (meta.category) {
-      embed.addFields({ name: '分類 (Category)', value: meta.category, inline: true })
+      const slug = meta.category.toLowerCase().replace(/\s+/g, '-')
+      const categoryLink = `[${meta.category}](https://nhentai.net/category/${slug}/)`
+      embed.addFields({ name: '分類 (Category)', value: categoryLink, inline: true })
     }
     if (meta.pages) {
       embed.addFields({ name: '頁數 (Pages)', value: `${meta.pages}`, inline: true })
     }
     if (meta.tags && meta.tags.length > 0) {
-      embed.addFields({ name: '標籤 (Tags)', value: meta.tags.slice(0, 20).join(', '), inline: false })
+      const tagLinks: string[] = []
+      let currentLen = 0
+      for (const name of meta.tags) {
+        const slug = name.toLowerCase().replace(/\s+/g, '-')
+        const link = `[${name}](https://nhentai.net/tag/${slug}/)`
+        if (currentLen + link.length + (tagLinks.length > 0 ? 2 : 0) > 1000) {
+          break
+        }
+        tagLinks.push(link)
+        currentLen += link.length + (tagLinks.length > 1 ? 2 : 0)
+      }
+      embed.addFields({ name: '標籤 (Tags)', value: tagLinks.join(', '), inline: false })
     }
   } else {
     if (meta.author) {
@@ -728,6 +762,12 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
   const isNsfw =
     message.channel.isTextBased() && 'nsfw' in message.channel && (message.channel as any).nsfw
   if (!isNsfw) return
+
+  // 3. 檢查伺服器設定是否開啟自動預覽
+  if (message.guild) {
+    const isEnabled = getNsfwSetting(message.guild.id)
+    if (!isEnabled) return
+  }
 
   // 延遲執行以等待 Discord 原生 embed 載入
   setTimeout(async () => {
@@ -817,7 +857,8 @@ export const checkAndAddNsfwEmbed = (message: Message, delayMs: number = 3000): 
         const hasEmbedWithThumb = fetchedMsg.embeds.some(
           emb => emb.thumbnail && emb.url && emb.url.includes(id)
         )
-        if (hasEmbedWithThumb) {
+        // 對於 nhentai，不論 Discord 是否已產生包含縮圖的 embed，都強制發送自訂預覽
+        if (hasEmbedWithThumb && !isNhUrl) {
           continue
         }
 

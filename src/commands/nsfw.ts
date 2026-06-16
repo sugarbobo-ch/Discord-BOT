@@ -391,13 +391,14 @@ export class NsfwCommand implements Command {
   private async getHentaiURL(message: Message, args: string[]): Promise<void> {
     const cmd = message.content.substring(1).split(' ')[0].toLowerCase()
     if (args.length === 1) {
-      if (message.channel.isTextBased() && 'nsfw' in message.channel && !message.channel.nsfw) {
-        ;(message.channel as any).send('請至開車頻道使用此指令')
-        return
-      }
       const id = args[0].trim()
       if (!/^\d+$/.test(id)) {
         message.reply(`格式錯誤，正確格式為：!${cmd} [車號]`)
+        return
+      }
+
+      if (message.channel.isTextBased() && 'nsfw' in message.channel && !message.channel.nsfw) {
+        ;(message.channel as any).send(`https://nhentai.net/g/${id}/`)
         return
       }
 

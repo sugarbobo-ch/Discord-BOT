@@ -14,8 +14,9 @@ export function getDb(): any {
 
   dbConnection = new DatabaseSync(path.join(process.cwd(), 'config', 'bobo.db'))
 
-  // 啟用外鍵約束
+  // 啟用外鍵約束與設定繁忙等待時間防止 concurrent 寫入鎖定
   dbConnection.exec('PRAGMA foreign_keys = ON;')
+  dbConnection.exec('PRAGMA busy_timeout = 5000;')
 
   // 初始化資料表
   dbConnection.exec(`
@@ -34,6 +35,7 @@ export function getDb(): any {
     CREATE TABLE IF NOT EXISTS settings (
       server_id TEXT PRIMARY KEY,
       detect_twitter INTEGER DEFAULT 1,
+      detect_nsfw INTEGER DEFAULT 1,
       FOREIGN KEY (server_id) REFERENCES servers(server_id) ON DELETE CASCADE
     );
 
@@ -48,6 +50,12 @@ export function getDb(): any {
   // 執行 Schema 遷移 (如果欄位不存在則新增)
   try {
     dbConnection.exec('ALTER TABLE user_memories ADD COLUMN memory_enabled INTEGER DEFAULT 1;')
+  } catch {
+    // 欄位已存在會丟出錯誤，可以直接忽略
+  }
+
+  try {
+    dbConnection.exec('ALTER TABLE settings ADD COLUMN detect_nsfw INTEGER DEFAULT 1;')
   } catch {
     // 欄位已存在會丟出錯誤，可以直接忽略
   }
@@ -80,12 +88,48 @@ export function setTwitterSetting(serverId: string, enable: boolean): void {
     // 確保伺服器已記錄在 servers 表中
     db.prepare('INSERT OR IGNORE INTO servers (server_id) VALUES (?)').run(serverId)
     // 寫入/更新設定
-    db.prepare('INSERT OR REPLACE INTO settings (server_id, detect_twitter) VALUES (?, ?)').run(
-      serverId,
-      enable ? 1 : 0
-    )
+    db.prepare(`
+      INSERT INTO settings (server_id, detect_twitter)
+      VALUES (?, ?)
+      ON CONFLICT(server_id) DO UPDATE SET detect_twitter = excluded.detect_twitter
+    `).run(serverId, enable ? 1 : 0)
   } catch (error) {
     console.error('Error setting twitter setting:', error)
+  }
+}
+
+/**
+ * 取得 R18/NSFW 連結自動預覽設定 (預設為開啟: true)
+ */
+export function getNsfwSetting(serverId: string): boolean {
+  const db = getDb()
+  try {
+    const row = db
+      .prepare('SELECT detect_nsfw FROM settings WHERE server_id = ?')
+      .get(serverId) as { detect_nsfw: number } | undefined
+    return row ? row.detect_nsfw === 1 : true
+  } catch (error) {
+    console.error('Error fetching nsfw setting:', error)
+    return true
+  }
+}
+
+/**
+ * 儲存 R18/NSFW 連結自動預覽設定
+ */
+export function setNsfwSetting(serverId: string, enable: boolean): void {
+  const db = getDb()
+  try {
+    // 確保伺服器已記錄在 servers 表中
+    db.prepare('INSERT OR IGNORE INTO servers (server_id) VALUES (?)').run(serverId)
+    // 寫入/更新設定
+    db.prepare(`
+      INSERT INTO settings (server_id, detect_nsfw)
+      VALUES (?, ?)
+      ON CONFLICT(server_id) DO UPDATE SET detect_nsfw = excluded.detect_nsfw
+    `).run(serverId, enable ? 1 : 0)
+  } catch (error) {
+    console.error('Error setting nsfw setting:', error)
   }
 }
 

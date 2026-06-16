@@ -6,20 +6,60 @@ import {
   PermissionFlagsBits,
   ChatInputCommandInteraction,
   ButtonInteraction,
-  MessageFlags
+  MessageFlags,
+  EmbedBuilder
 } from 'discord.js'
 import { Command } from './command.interface'
-import { getTwitterSetting, setTwitterSetting } from '../utils/db'
+import { getTwitterSetting, setTwitterSetting, getNsfwSetting, setNsfwSetting } from '../utils/db'
 
 export class SettingCommand implements Command {
   public names = ['設定', 'setting']
 
   public slashData = {
     name: '設定',
-    description: '設定機器人功能 (例如 x.com 自動置換)'
+    description: '設定機器人功能 (例如 x.com 置換、NSFW 本子自動預覽與連結跳轉)'
   }
 
-  public buttonIds = ['settings_twitter_enable', 'settings_twitter_disable']
+  public buttonIds = ['settings_twitter_toggle', 'settings_nsfw_toggle']
+
+  private createSettingsPayload(serverId: string) {
+    const isTwitterEnabled = getTwitterSetting(serverId)
+    const isNsfwEnabled = getNsfwSetting(serverId)
+
+    const embed = new EmbedBuilder()
+      .setTitle('🔧 機器人伺服器功能設定')
+      .setDescription('管理員可透過下方按鈕即時切換伺服器功能開關。')
+      .setColor(0x5865f2) // Discord Blurple
+      .addFields(
+        {
+          name: '1️⃣ 偵測 x.com 自動置換',
+          value: `目前狀態：${isTwitterEnabled ? '🟢 **已開啟**' : '🔴 **已關閉**'}\n*偵測推特連結並自動置換為 fixvx.com 以便在 Discord 內正常預覽。*`,
+          inline: false
+        },
+        {
+          name: '2️⃣ NSFW 本子自動預覽 (Embed)',
+          value: `目前狀態：${isNsfwEnabled ? '🟢 **已開啟**' : '🔴 **已關閉**'}\n*在開車頻道自動解析本本網址與車號並生成包含畫師、社團、標籤與點擊跳轉連結的卡片；非開車頻道則僅貼出原始網址。*`,
+          inline: false
+        }
+      )
+      .setFooter({ text: '點擊下方按鈕以切換設定 • 僅限管理員操作' })
+      .setTimestamp()
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('settings_twitter_toggle')
+        .setLabel(`推特置換：${isTwitterEnabled ? '已開啟' : '已關閉'}`)
+        .setStyle(isTwitterEnabled ? ButtonStyle.Success : ButtonStyle.Danger)
+        .setEmoji('✖️'),
+      new ButtonBuilder()
+        .setCustomId('settings_nsfw_toggle')
+        .setLabel(`本子預覽：${isNsfwEnabled ? '已開啟' : '已關閉'}`)
+        .setStyle(isNsfwEnabled ? ButtonStyle.Success : ButtonStyle.Danger)
+        .setEmoji('🔞')
+    )
+
+    return { embeds: [embed], components: [row] }
+  }
 
   public async execute(message: Message, args: string[]): Promise<void> {
     if (!message.guild) {
@@ -38,24 +78,8 @@ export class SettingCommand implements Command {
       return
     }
 
-    const serverId = message.guild.id
-    const isTwitterEnabled = getTwitterSetting(serverId)
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('settings_twitter_enable')
-        .setLabel('開啟自動置換')
-        .setStyle(isTwitterEnabled ? ButtonStyle.Success : ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('settings_twitter_disable')
-        .setLabel('關閉自動置換')
-        .setStyle(isTwitterEnabled ? ButtonStyle.Secondary : ButtonStyle.Danger)
-    )
-
-    await message.reply({
-      content: `🔧 **機器人伺服器設定**\n目前設定項目：**偵測 x.com 自動置換 fixvx.com**\n目前狀態：${isTwitterEnabled ? '🟢 已開啟' : '🔴 已關閉'}\n請點擊下方按鈕以切換設定：`,
-      components: [row]
-    })
+    const payload = this.createSettingsPayload(message.guild.id)
+    await message.reply(payload)
   }
 
   public async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -78,23 +102,8 @@ export class SettingCommand implements Command {
       return
     }
 
-    const isTwitterEnabled = getTwitterSetting(interaction.guildId)
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('settings_twitter_enable')
-        .setLabel('開啟自動置換')
-        .setStyle(isTwitterEnabled ? ButtonStyle.Success : ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('settings_twitter_disable')
-        .setLabel('關閉自動置換')
-        .setStyle(isTwitterEnabled ? ButtonStyle.Secondary : ButtonStyle.Danger)
-    )
-
-    await interaction.reply({
-      content: `🔧 **機器人伺服器設定**\n目前設定項目：**偵測 x.com 自動置換 fixvx.com**\n目前狀態：${isTwitterEnabled ? '🟢 已開啟' : '🔴 已關閉'}\n請點擊下方按鈕以切換設定：`,
-      components: [row]
-    })
+    const payload = this.createSettingsPayload(interaction.guildId)
+    await interaction.reply(payload)
   }
 
   public async executeButton(interaction: ButtonInteraction): Promise<void> {
@@ -118,23 +127,15 @@ export class SettingCommand implements Command {
       return
     }
 
-    const enable = interaction.customId === 'settings_twitter_enable'
-    setTwitterSetting(guildId, enable)
+    if (interaction.customId === 'settings_twitter_toggle') {
+      const current = getTwitterSetting(guildId)
+      setTwitterSetting(guildId, !current)
+    } else if (interaction.customId === 'settings_nsfw_toggle') {
+      const current = getNsfwSetting(guildId)
+      setNsfwSetting(guildId, !current)
+    }
 
-    const newRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('settings_twitter_enable')
-        .setLabel('開啟自動置換')
-        .setStyle(enable ? ButtonStyle.Success : ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId('settings_twitter_disable')
-        .setLabel('關閉自動置換')
-        .setStyle(enable ? ButtonStyle.Secondary : ButtonStyle.Danger)
-    )
-
-    await interaction.update({
-      content: `🔧 **機器人伺服器設定**\n目前設定項目：**偵測 x.com 自動置換 fixvx.com**\n目前狀態：${enable ? '🟢 已開啟' : '🔴 已關閉'}\n請點擊下方按鈕以切換設定：`,
-      components: [newRow]
-    })
+    const payload = this.createSettingsPayload(guildId)
+    await interaction.update(payload)
   }
 }

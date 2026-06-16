@@ -3,10 +3,14 @@ import axios from 'axios'
 import { checkAndAddNsfwEmbed } from '../../src/features/nsfwEmbed'
 import { Message } from 'discord.js'
 import { getGotScraping } from '../../src/utils/gotScrapingHelper'
+import { getNsfwSetting } from '../../src/utils/db'
 
 vi.mock('axios')
 vi.mock('../../src/utils/gotScrapingHelper', () => ({
   getGotScraping: vi.fn()
+}))
+vi.mock('../../src/utils/db', () => ({
+  getNsfwSetting: vi.fn().mockReturnValue(true)
 }))
 
 describe('NSFW Embed Features Tests', () => {
@@ -407,14 +411,14 @@ describe('NSFW Embed Features Tests', () => {
     expect(embed.data.image.url).toBe('https://t.nhentai.net/galleries/905331/cover.jpg')
     
     const fields = embed.data.fields
-    expect(fields).toContainEqual(expect.objectContaining({ name: '作者 (Artist)', value: 'kamanbeer', inline: true }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '社團 (Group)', value: 'tareme sijou syugi', inline: true }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '原作 (Parody)', value: 'blue archive', inline: true }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '角色 (Character)', value: 'kei tendou', inline: true }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '語言 (Language)', value: 'translated, chinese', inline: true }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '分類 (Category)', value: 'doujinshi', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '作者 (Artist)', value: '[kamanbeer](https://nhentai.net/artist/kamanbeer/)', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '社團 (Group)', value: '[tareme sijou syugi](https://nhentai.net/group/tareme-sijou-syugi/)', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '原作 (Parody)', value: '[blue archive](https://nhentai.net/parody/blue-archive/)', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '角色 (Character)', value: '[kei tendou](https://nhentai.net/character/kei-tendou/)', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '語言 (Language)', value: '[translated](https://nhentai.net/language/translated/), [chinese](https://nhentai.net/language/chinese/)', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '分類 (Category)', value: '[doujinshi](https://nhentai.net/category/doujinshi/)', inline: true }))
     expect(fields).toContainEqual(expect.objectContaining({ name: '頁數 (Pages)', value: '464', inline: true }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '標籤 (Tags)', value: 'lolicon, ponytail', inline: false }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '標籤 (Tags)', value: '[lolicon](https://nhentai.net/tag/lolicon/), [ponytail](https://nhentai.net/tag/ponytail/)', inline: false }))
   })
 
   test('should fallback to nhentai.to if nhentai.net scraping fails', async () => {
@@ -481,7 +485,23 @@ describe('NSFW Embed Features Tests', () => {
     expect(embed.data.image.url).toBe('https://t.nhentai.net/galleries/905331/cover.png')
     
     const fields = embed.data.fields
-    expect(fields).toContainEqual(expect.objectContaining({ name: '作者 (Artist)', value: 'kamanbeer', inline: true }))
-    expect(fields).toContainEqual(expect.objectContaining({ name: '語言 (Language)', value: 'chinese', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '作者 (Artist)', value: '[kamanbeer](https://nhentai.net/artist/kamanbeer/)', inline: true }))
+    expect(fields).toContainEqual(expect.objectContaining({ name: '語言 (Language)', value: '[chinese](https://nhentai.net/language/chinese/)', inline: true }))
+  })
+
+  test('should do nothing if getNsfwSetting is disabled', async () => {
+    mockMessage.content = 'https://nhentai.net/g/177013/'
+    mockMessage.guild = { id: 'guild_123' }
+
+    // Mock getNsfwSetting to return false
+    vi.mocked(getNsfwSetting).mockReturnValueOnce(false)
+
+    checkAndAddNsfwEmbed(mockMessage as unknown as Message, 0)
+
+    await vi.runAllTimersAsync()
+
+    // Should not check embed state or send anything
+    expect(mockMessage.channel.messages.fetch).not.toHaveBeenCalled()
+    expect(mockMessage.channel.send).not.toHaveBeenCalled()
   })
 })

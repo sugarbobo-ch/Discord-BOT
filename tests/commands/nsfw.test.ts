@@ -93,6 +93,18 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
     expect(mockChannel.send).toHaveBeenCalledWith('請至開車頻道使用此指令')
   })
 
+  test('should send raw URL in non-NSFW channel for nhentai/god commands', async () => {
+    mockChannel.nsfw = false
+    const msg = {
+      content: '!god 177013',
+      channel: mockChannel,
+      reply: mockReply
+    } as any
+
+    await nsfwCommand.execute(msg, ['177013'])
+    expect(mockChannel.send).toHaveBeenCalledWith('https://nhentai.net/g/177013/')
+  })
+
   test('should send pixiv embed in NSFW channel', async () => {
     const msg = {
       content: '!pixiv 12345',
