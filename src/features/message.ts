@@ -124,7 +124,9 @@ export const editCommand = async (message: Message, command?: string): Promise<v
       message.reply(`${targetCmd} 指令已經更新，內容： ${responseDict[server][targetCmd]}`)
     }
   } else if (action === 'addimg') {
-    if (commands.length < 3) {
+    const hasAttachments = message.attachments && message.attachments.size > 0
+    const hasReply = message.reference && message.reference.messageId
+    if (commands.length < 3 && !hasAttachments && !hasReply) {
       message.reply('格式錯誤，正確格式為：!addimg [指令名稱] [圖片網址]')
       return
     }
@@ -279,52 +281,184 @@ export const displayAvailableCommands = (message: Message): void => {
   ;(message.channel as any).send({ embeds: [embed] })
 }
 
+const getUrlPath = (urlStr: string): string => {
+  try {
+    const parsed = new URL(urlStr)
+    return parsed.pathname
+  } catch {
+    return urlStr.split('?')[0].split('#')[0]
+  }
+}
+
+const getImagesFromMessage = (msg: Message): string[] => {
+  const urls: string[] = []
+  
+  // 1. From attachments
+  msg.attachments.forEach(att => {
+    const isImg = att.contentType?.startsWith('image/') || fileManager.checkURL(att.url)
+    if (isImg) {
+      urls.push(att.url)
+    }
+  })
+
+  // 2. From embeds
+  if (msg.embeds && msg.embeds.length > 0) {
+    for (const embed of msg.embeds) {
+      const embedImageUrl = embed.image?.url || embed.thumbnail?.url
+      if (embedImageUrl && fileManager.checkURL(embedImageUrl)) {
+        urls.push(embedImageUrl)
+      }
+    }
+  }
+
+  // 3. From text URLs
+  const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
+  if (urlMatch) {
+    for (const url of urlMatch) {
+      if (fileManager.checkURL(url)) {
+        urls.push(url)
+      }
+    }
+  }
+
+  return Array.from(new Set(urls))
+}
+
+const countImagesInFolder = async (folderName: string): Promise<number> => {
+  const dirPath = path.join('assets/images', folderName)
+  if (!fs.existsSync(dirPath)) return 0
+  try {
+    const files = await fs.promises.readdir(dirPath)
+    const imageRexExp = /\.(jpeg|jpg|gif|png)$/i
+    return files.filter(f => imageRexExp.test(f)).length
+  } catch (err) {
+    console.error(`Failed to read directory ${dirPath}:`, err)
+    return 0
+  }
+}
+
 export const addImageCommand = async (message: Message): Promise<void> => {
   const content = message.content.substring(1)
   const commands = content.split(' ')
-  if (commands.length < 3) {
-    message.reply('格式錯誤，正確格式為：!addimg [指令名稱] [圖片網址]')
+  const folderName = commands[1]
+
+  if (!folderName) {
+    message.reply('格式錯誤，正確格式為：!addimg [指令名稱] [圖片網址] 或附帶圖片/回覆圖片')
     return
   }
 
-  const folderName = commands[1]
-  const imageUrl = commands[2]
+  // Collect image URLs
+  const imageUrls: string[] = []
+  const urlArg = commands[2]
 
-  try {
-    message.reply('正在下載並分析圖片安全性...')
-    const fileDest = await fileManager.downloadFile(imageUrl, folderName, error => {
-      console.log(error)
-    })
-
-    // 檢查頻道是否不是 NSFW 頻道
-    const isNsfwChannel =
-      message.channel.isTextBased() && 'nsfw' in message.channel && (message.channel as any).nsfw
-
-    if (!isNsfwChannel) {
-      const buffer = await fs.promises.readFile(fileDest)
-      const mimeType = imageUrl.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : imageUrl.toLowerCase().endsWith('.gif')
-          ? 'image/gif'
-          : 'image/jpeg'
-
-      const nsfwResult = await checkImageNSFW(buffer, mimeType)
-      if (nsfwResult.nsfw) {
-        // 刪除剛下載的檔案並自 index 清除
-        await fileManager.removeFile(
-          'assets/images/' + folderName,
-          path.basename(fileDest),
-          folderName
-        )
-        message.reply(`⛔ 圖片檢測為 NSFW 內容，已被拒絕！原因：${nsfwResult.reason}`)
+  if (urlArg) {
+    if (urlArg.startsWith('http://') || urlArg.startsWith('https://')) {
+      if (fileManager.checkURL(urlArg)) {
+        imageUrls.push(urlArg)
+      } else {
+        const statusMsg = await message.reply('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+        await statusMsg.edit('圖片新增失敗: Invalid URL')
         return
       }
+    } else {
+      const statusMsg = await message.reply('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+      await statusMsg.edit('圖片新增失敗: Invalid URL')
+      return
+    }
+  }
+
+  // Add attachments from command message itself
+  const currentImages = getImagesFromMessage(message)
+  imageUrls.push(...currentImages)
+
+  // Add attachments from replied message if any
+  if (message.reference && message.reference.messageId) {
+    try {
+      const repliedMsg = await message.channel.messages.fetch(message.reference.messageId)
+      const repliedImages = getImagesFromMessage(repliedMsg)
+      imageUrls.push(...repliedImages)
+    } catch (err: any) {
+      console.warn('Failed to fetch referenced message in addImageCommand:', err.message)
+    }
+  }
+
+  const uniqueUrls = Array.from(new Set(imageUrls))
+
+  if (uniqueUrls.length === 0) {
+    const statusMsg = await message.reply('偵測到 0 張圖片，正在下載並分析圖片安全性...')
+    await statusMsg.edit('圖片新增失敗: 找不到有效的圖片網址或附件。')
+    return
+  }
+
+  const total = uniqueUrls.length
+  const statusMsg = await message.reply(`偵測到 ${total} 張圖片，正在下載並分析圖片安全性...`)
+
+  let successCount = 0
+  let failCount = 0
+  const failReasons: string[] = []
+
+  for (let i = 0; i < total; i++) {
+    const url = uniqueUrls[i]
+    try {
+      await statusMsg.edit(`正在下載並分析圖片安全性 (第 ${i + 1}/${total} 張) - 已成功 ${successCount} 張，失敗 ${failCount} 張...`)
+    } catch (editErr) {
+      console.warn('Failed to update status message progress:', editErr)
     }
 
-    message.reply('圖片新增成功')
-  } catch (error: any) {
-    console.error(error)
-    message.reply(`圖片新增失敗: ${error.message || error}`)
+    try {
+      const fileDest = await fileManager.downloadFile(url, folderName, error => {
+        console.log(error)
+      })
+
+      const isNsfwChannel =
+        message.channel.isTextBased() && 'nsfw' in message.channel && (message.channel as any).nsfw
+
+      if (!isNsfwChannel) {
+        const buffer = await fs.promises.readFile(fileDest)
+        const pathname = getUrlPath(url)
+        const mimeType = pathname.toLowerCase().endsWith('.png')
+          ? 'image/png'
+          : pathname.toLowerCase().endsWith('.gif')
+            ? 'image/gif'
+            : 'image/jpeg'
+
+        const nsfwResult = await checkImageNSFW(buffer, mimeType)
+        if (nsfwResult.nsfw) {
+          await fileManager.removeFile(
+            'assets/images/' + folderName,
+            path.basename(fileDest),
+            folderName
+          )
+          failCount++
+          failReasons.push(`第 ${i + 1} 張圖片檢測為 NSFW 內容 (原因: ${nsfwResult.reason})`)
+          continue
+        }
+      }
+
+      successCount++
+    } catch (error: any) {
+      console.error(error)
+      failCount++
+      failReasons.push(`第 ${i + 1} 張圖片新增失敗: ${error.message || error}`)
+    }
+  }
+
+  if (successCount > 0) {
+    const totalImages = await countImagesInFolder(folderName)
+    const otherImages = totalImages - successCount
+    let responseText = `圖片新增成功！本串新增了 ${successCount} 張圖片。該指令目前共有 ${totalImages} 張圖片 (另有 ${otherImages} 張圖片)。`
+    if (failCount > 0) {
+      responseText += `\n其中 ${failCount} 張新增失敗：\n` + failReasons.map(r => `• ${r}`).join('\n')
+    }
+    await statusMsg.edit(responseText)
+  } else {
+    let responseText = `圖片新增失敗`
+    if (failReasons.length > 0) {
+      responseText += `:\n` + failReasons.map(r => `• ${r}`).join('\n')
+    } else {
+      responseText += `: 未知錯誤`
+    }
+    await statusMsg.edit(responseText)
   }
 }
 

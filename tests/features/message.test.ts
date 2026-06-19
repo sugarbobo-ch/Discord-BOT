@@ -25,13 +25,15 @@ vi.mock('fs', () => ({
     existsSync: vi.fn().mockReturnValue(true),
     promises: {
       readFile: vi.fn().mockResolvedValue(Buffer.from('dummy_image_data')),
-      unlink: vi.fn().mockResolvedValue(undefined)
+      unlink: vi.fn().mockResolvedValue(undefined),
+      readdir: vi.fn().mockResolvedValue(['file1.png', 'file2.jpg', 'commandname'])
     }
   },
   existsSync: vi.fn().mockReturnValue(true),
   promises: {
     readFile: vi.fn().mockResolvedValue(Buffer.from('dummy_image_data')),
-    unlink: vi.fn().mockResolvedValue(undefined)
+    unlink: vi.fn().mockResolvedValue(undefined),
+    readdir: vi.fn().mockResolvedValue(['file1.png', 'file2.jpg', 'commandname'])
   }
 }))
 
@@ -40,16 +42,26 @@ vi.mock('../../src/utils/file', () => ({
   removeFile: vi.fn().mockResolvedValue(undefined),
   getRandomFile: vi.fn().mockResolvedValue('assets/images/testfolder/image.png'),
   checkFileDirectoryIsExist: vi.fn().mockReturnValue(true),
-  isImage: vi.fn().mockReturnValue(true)
+  isImage: vi.fn().mockReturnValue(true),
+  checkURL: vi.fn().mockReturnValue(true)
 }))
 
 vi.mock('../../src/utils/gemini', () => ({
   checkImageNSFW: vi.fn().mockResolvedValue({ nsfw: false, reason: '' })
 }))
 
-const mockMessage = (content: string, guildId = 'test_guild_message_feature') => {
+const mockMessage = (content: string, guildId = 'test_guild_message_feature', attachmentsList: any[] = []) => {
   const channelSendMock = vi.fn().mockResolvedValue(true)
-  const messageReplyMock = vi.fn().mockResolvedValue(true)
+  const statusMsgMock = {
+    edit: vi.fn().mockResolvedValue(true)
+  }
+  const messageReplyMock = vi.fn().mockResolvedValue(statusMsgMock)
+  
+  const attachmentsMap = new Map()
+  attachmentsList.forEach((att, idx) => {
+    attachmentsMap.set(idx.toString(), att)
+  })
+
   return {
     content,
     guild: {
@@ -58,11 +70,16 @@ const mockMessage = (content: string, guildId = 'test_guild_message_feature') =>
     channel: {
       isTextBased: () => true,
       nsfw: false,
-      send: channelSendMock
+      send: channelSendMock,
+      messages: {
+        fetch: vi.fn().mockResolvedValue(null)
+      }
     },
     reply: messageReplyMock,
     author: { bot: false, id: '123', username: 'testuser' },
-    member: { displayName: 'testnickname' }
+    member: { displayName: 'testnickname' },
+    attachments: attachmentsMap,
+    embeds: []
   } as any
 }
 
@@ -261,8 +278,11 @@ describe('Message Feature Tests', () => {
       const msg = mockMessage('!addimg testcmd http://example.com/test.png', testServerId)
       await editCommand(msg, 'addimg')
 
-      expect(msg.reply).toHaveBeenCalledWith('正在下載並分析圖片安全性...')
-      expect(msg.reply).toHaveBeenCalledWith('圖片新增成功')
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+      const statusMsgMock = await msg.reply.mock.results[0].value
+      expect(statusMsgMock.edit).toHaveBeenCalledWith(
+        expect.stringContaining('圖片新增成功！本串新增了 1 張圖片。該指令目前共有 2 張圖片 (另有 1 張圖片)。')
+      )
       expect(fileManager.downloadFile).toHaveBeenCalledWith(
         'http://example.com/test.png',
         'testcmd',
@@ -277,11 +297,62 @@ describe('Message Feature Tests', () => {
       const msg = mockMessage('!addimg testcmd http://example.com/nsfw.png', testServerId)
       await editCommand(msg, 'addimg')
 
-      expect(msg.reply).toHaveBeenCalledWith('正在下載並分析圖片安全性...')
-      expect(msg.reply).toHaveBeenCalledWith(
-        expect.stringContaining('⛔ 圖片檢測為 NSFW 內容，已被拒絕！原因：NSFW Content detected')
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+      const statusMsgMock = await msg.reply.mock.results[0].value
+      expect(statusMsgMock.edit).toHaveBeenCalledWith(
+        expect.stringContaining('圖片新增失敗:\n• 第 1 張圖片檢測為 NSFW 內容 (原因: NSFW Content detected)')
       )
       expect(fileManager.removeFile).toHaveBeenCalled()
+    })
+
+    test('should add images from attachments if no URL argument is provided', async () => {
+      vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/uuid.png')
+      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: false, reason: '' })
+
+      const attachments = [
+        { url: 'http://example.com/attach1.png', contentType: 'image/png' },
+        { url: 'http://example.com/attach2.jpg', contentType: 'image/jpeg' }
+      ]
+      const msg = mockMessage('!addimg testcmd', testServerId, attachments)
+      await editCommand(msg, 'addimg')
+
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載並分析圖片安全性...')
+      const statusMsgMock = await msg.reply.mock.results[0].value
+      expect(statusMsgMock.edit).toHaveBeenLastCalledWith(
+        expect.stringContaining('圖片新增成功！本串新增了 2 張圖片。該指令目前共有 2 張圖片 (另有 0 張圖片)。')
+      )
+      expect(fileManager.downloadFile).toHaveBeenCalledWith(
+        'http://example.com/attach1.png',
+        'testcmd',
+        expect.any(Function)
+      )
+      expect(fileManager.downloadFile).toHaveBeenCalledWith(
+        'http://example.com/attach2.jpg',
+        'testcmd',
+        expect.any(Function)
+      )
+    })
+
+    test('should add images from replied message attachments/embeds/URLs', async () => {
+      vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/uuid.png')
+      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: false, reason: '' })
+
+      const msg = mockMessage('!addimg testcmd', testServerId)
+      msg.reference = { messageId: 'replied_msg_id' }
+      
+      const repliedAttachments = [
+        { url: 'http://example.com/reply1.png', contentType: 'image/png' }
+      ]
+      const repliedMsg = mockMessage('replied content with URL http://example.com/reply2.jpg', testServerId, repliedAttachments)
+      msg.channel.messages.fetch = vi.fn().mockResolvedValue(repliedMsg)
+
+      await editCommand(msg, 'addimg')
+
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載並分析圖片安全性...')
+      const statusMsgMock = await msg.reply.mock.results[0].value
+      expect(statusMsgMock.edit).toHaveBeenLastCalledWith(
+        expect.stringContaining('圖片新增成功！本串新增了 2 張圖片。該指令目前共有 2 張圖片 (另有 0 張圖片)。')
+      )
     })
 
     test('should delete image file via !delimg successfully', async () => {

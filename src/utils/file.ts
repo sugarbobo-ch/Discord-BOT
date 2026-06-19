@@ -28,12 +28,23 @@ export const uuidv4 = (): string => {
   })
 }
 
+const getUrlPath = (urlStr: string): string => {
+  try {
+    const parsed = new URL(urlStr)
+    return parsed.pathname
+  } catch {
+    return urlStr.split('?')[0].split('#')[0]
+  }
+}
+
 export const checkURL = (url: string): boolean => {
-  return url.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/) != null
+  const pathname = getUrlPath(url)
+  return pathname.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/) != null
 }
 
 export const isGif = (url: string): boolean => {
-  return url.match(/\.(gif|GIF)$/) != null
+  const pathname = getUrlPath(url)
+  return pathname.match(/\.(gif|GIF)$/) != null
 }
 
 export const createIndexFileInDir = async (indexOfDir: string, files: string[]): Promise<void> => {
@@ -134,7 +145,8 @@ export const downloadFile = async (
         fs.mkdirSync(destPath, { recursive: true })
       }
       const fileName = uuidv4()
-      const matchExtension = url.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/)
+      const pathname = getUrlPath(url)
+      const matchExtension = pathname.match(/\.(jpeg|jpg|gif|png|JEPG|JPG|GIF|PNG)$/)
       if (!matchExtension) {
         return reject(new Error('No valid extension found'))
       }

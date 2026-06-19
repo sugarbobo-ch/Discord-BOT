@@ -24,12 +24,18 @@ describe('File Utility Tests', () => {
       expect(checkURL('https://example.com/pic.png')).toBe(true)
       expect(checkURL('https://example.com/pic.gif')).toBe(true)
       expect(checkURL('https://example.com/pic.JPG')).toBe(true)
+      expect(checkURL('https://example.com/pic.jpg?width=100')).toBe(true)
+      expect(
+        checkURL(
+          'https://cdn.discordapp.com/attachments/685192427535204361/1517367099947745462/kdb622w.png?ex=6a3605bb&is=6a34b43b&hm=ed011b69892cae9b786b2a8348e058aa3214330200930f2935d5e85264dc88db&'
+        )
+      ).toBe(true)
     })
 
     test('should return false for invalid image extensions', () => {
       expect(checkURL('https://example.com/pic.html')).toBe(false)
       expect(checkURL('https://example.com/pic.mp4')).toBe(false)
-      expect(checkURL('https://example.com/pic.jpg?width=100')).toBe(false) // 結尾並非圖片格式
+      expect(checkURL('https://example.com/pic.html?width=100')).toBe(false)
       expect(checkURL('https://example.com/pic')).toBe(false)
     })
   })
