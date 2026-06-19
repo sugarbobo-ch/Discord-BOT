@@ -124,7 +124,8 @@ export const editCommand = async (message: Message, command?: string): Promise<v
       message.reply(`${targetCmd} 指令已經更新，內容： ${responseDict[server][targetCmd]}`)
     }
   } else if (action === 'addimg') {
-    const hasAttachments = message.attachments && message.attachments.size > 0
+    const hasAttachments = (message.attachments && message.attachments.size > 0) ||
+                           ((message as any).messageSnapshots && (message as any).messageSnapshots.size > 0)
     const hasReply = message.reference && message.reference.messageId
     if (commands.length < 3 && !hasAttachments && !hasReply) {
       message.reply('格式錯誤，正確格式為：!addimg [指令名稱] [圖片網址]')
@@ -293,32 +294,46 @@ const getUrlPath = (urlStr: string): string => {
 const getImagesFromMessage = (msg: Message): string[] => {
   const urls: string[] = []
   
-  // 1. From attachments
-  msg.attachments.forEach(att => {
-    const isImg = att.contentType?.startsWith('image/') || fileManager.checkURL(att.url)
-    if (isImg) {
-      urls.push(att.url)
+  const extractFromFields = (attachments: any, embeds: any, content: string) => {
+    if (attachments) {
+      attachments.forEach((att: any) => {
+        const isImg = att.contentType?.startsWith('image/') || fileManager.checkURL(att.url)
+        if (isImg) {
+          urls.push(att.url)
+        }
+      })
     }
-  })
 
-  // 2. From embeds
-  if (msg.embeds && msg.embeds.length > 0) {
-    for (const embed of msg.embeds) {
-      const embedImageUrl = embed.image?.url || embed.thumbnail?.url
-      if (embedImageUrl && fileManager.checkURL(embedImageUrl)) {
-        urls.push(embedImageUrl)
+    if (embeds && embeds.length > 0) {
+      for (const embed of embeds) {
+        const embedImageUrl = embed.image?.url || embed.thumbnail?.url
+        if (embedImageUrl && fileManager.checkURL(embedImageUrl)) {
+          urls.push(embedImageUrl)
+        }
+      }
+    }
+
+    if (content) {
+      const urlMatch = content.match(/https?:\/\/\S+/gi)
+      if (urlMatch) {
+        for (const url of urlMatch) {
+          if (fileManager.checkURL(url)) {
+            urls.push(url)
+          }
+        }
       }
     }
   }
 
-  // 3. From text URLs
-  const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
-  if (urlMatch) {
-    for (const url of urlMatch) {
-      if (fileManager.checkURL(url)) {
-        urls.push(url)
-      }
-    }
+  // 1. From the message itself
+  extractFromFields(msg.attachments, msg.embeds, msg.content)
+
+  // 2. From forwarded message snapshots (if any)
+  const snapshots = (msg as any).messageSnapshots
+  if (snapshots && snapshots.size > 0) {
+    snapshots.forEach((snapshot: any) => {
+      extractFromFields(snapshot.attachments, snapshot.embeds, snapshot.content)
+    })
   }
 
   return Array.from(new Set(urls))

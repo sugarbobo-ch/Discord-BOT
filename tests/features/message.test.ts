@@ -355,6 +355,30 @@ describe('Message Feature Tests', () => {
       )
     })
 
+    test('should add images from forwarded message snapshots', async () => {
+      vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/uuid.png')
+      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: false, reason: '' })
+
+      const msg = mockMessage('!addimg testcmd', testServerId)
+      const snapshotsMap = new Map()
+      snapshotsMap.set('snapshot_id', {
+        content: 'forwarded content with URL http://example.com/forward2.jpg',
+        attachments: new Map([
+          ['0', { url: 'http://example.com/forward1.png', contentType: 'image/png' }]
+        ]),
+        embeds: []
+      })
+      msg.messageSnapshots = snapshotsMap
+
+      await editCommand(msg, 'addimg')
+
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載並分析圖片安全性...')
+      const statusMsgMock = await msg.reply.mock.results[0].value
+      expect(statusMsgMock.edit).toHaveBeenLastCalledWith(
+        expect.stringContaining('圖片新增成功！本串新增了 2 張圖片。該指令目前共有 2 張圖片 (另有 0 張圖片)。')
+      )
+    })
+
     test('should delete image file via !delimg successfully', async () => {
       vi.mocked(fileManager.checkFileDirectoryIsExist).mockReturnValue(true)
 
