@@ -621,6 +621,8 @@ export const isCustomCommandResponse = (message: Message): boolean => {
   return Object.values(responseDict[server]).some(resp => resp === content)
 }
 
+export const BOBO_DIALOGUE_SIGNATURE = '\u200B\u200C'
+
 /**
  * 判斷是否應跳過 dialogue (Gemini chatbot) 觸發
  */
@@ -651,62 +653,46 @@ export const shouldSkipDialogueTrigger = (message: Message, repliedMsg: Message 
     return true
   }
 
-  // 3. 檢查被回覆的訊息是否為指令、斜線指令、或指令回應
+  // 3. 檢查被回覆的訊息
   if (repliedMsg) {
-    // A. 偵測是否為指令 (以 !, ！, /, # 開頭)
-    const trimmed = repliedMsg.content.trim()
-    const firstChar = trimmed.charAt(0)
-    if (firstChar === '!' || firstChar === '！' || firstChar === '/' || firstChar === '#') {
-      return true
-    }
+    const client = clientManager.client
+    const isBotAuthor = client?.user && repliedMsg.author.id === client.user.id
 
-    // B. 偵測是否為斜線指令的回應 (由 Discord API 標記 of interaction)
-    if (repliedMsg.interaction && repliedMsg.interaction.commandName !== 'bobo') {
-      return true
-    }
+    if (isBotAuthor) {
+      // 如果被回覆的訊息是機器人發送的，必須包含 Bobo 對話特有的隱形簽章才允許觸發對話
+      if (!repliedMsg.content.includes(BOBO_DIALOGUE_SIGNATURE)) {
+        return true
+      }
+    } else {
+      // 如果被回覆的訊息是由其他使用者發送的，則維持過濾指令與 R18 連結的邏輯以防干擾
+      const trimmed = repliedMsg.content.trim()
+      const firstChar = trimmed.charAt(0)
+      if (firstChar === '!' || firstChar === '！' || firstChar === '/' || firstChar === '#') {
+        return true
+      }
+      if (comicPatterns.some(pattern => pattern.test(repliedMsg.content))) {
+        return true
+      }
 
-    // C. 偵測是否為自訂指令的回應
-    if (isCustomCommandResponse(repliedMsg)) {
-      return true
-    }
+      // 檢查被回覆訊息的 Embeds (例如漫畫預覽、Saucenao 搜尋結果)
+      if (repliedMsg.embeds && repliedMsg.embeds.length > 0) {
+        for (const embed of repliedMsg.embeds) {
+          const title = embed.title || ''
+          const author = embed.author?.name || ''
+          const footer = embed.footer?.text || ''
+          const description = embed.description || ''
+          const url = embed.url || ''
 
-    // D. 偵測是否為機器人的內建指令回應內容
-    const commandOutputPatterns = [
-      /點名清單|投票：|結束點名|點名狀態/i,
-      /抽獎清單|抽獎指令|開獎|已結束.*抽獎/i,
-      /機器人伺服器設定/i,
-      /指令列表|以下是可以使用的指令/i,
-      /長期記憶|我的記憶|記憶功能|記憶已設定/i,
-      /股票|走勢圖|股票歷史/i,
-      /抓到了! 是錯字!|打成「因」的/i
-    ]
-    if (commandOutputPatterns.some(pattern => pattern.test(repliedMsg.content))) {
-      return true
-    }
-
-    // E. 偵測是否為漫畫/R18 連結或 embed 內容
-    if (comicPatterns.some(pattern => pattern.test(repliedMsg.content))) {
-      return true
-    }
-
-    // 檢查被回覆訊息的 Embeds (例如漫畫預覽、Saucenao 搜尋結果)
-    if (repliedMsg.embeds && repliedMsg.embeds.length > 0) {
-      for (const embed of repliedMsg.embeds) {
-        const title = embed.title || ''
-        const author = embed.author?.name || ''
-        const footer = embed.footer?.text || ''
-        const description = embed.description || ''
-        const url = embed.url || ''
-
-        const isComicText = /紳士漫畫|禁漫天堂|嗨皮漫畫|E-Hentai|ExHentai|Saucenao|搜尋結果|相似度|畫師|社團/i
-        if (
-          comicPatterns.some(pattern => pattern.test(url)) ||
-          isComicText.test(title) ||
-          isComicText.test(author) ||
-          isComicText.test(footer) ||
-          isComicText.test(description)
-        ) {
-          return true
+          const isComicText = /紳士漫畫|禁漫天堂|嗨皮漫畫|E-Hentai|ExHentai|Saucenao|搜尋結果|相似度|畫師|社團/i
+          if (
+            comicPatterns.some(pattern => pattern.test(url)) ||
+            isComicText.test(title) ||
+            isComicText.test(author) ||
+            isComicText.test(footer) ||
+            isComicText.test(description)
+          ) {
+            return true
+          }
         }
       }
     }

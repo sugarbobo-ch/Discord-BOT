@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { BoboCommand } from '../../src/commands/bobo'
 import { chatWithBobo, getHybridContext, updateMemoryInBackground } from '../../src/utils/gemini'
+import { BOBO_DIALOGUE_SIGNATURE } from '../../src/features/message'
 import axios from 'axios'
 
 vi.mock('axios')
@@ -229,7 +230,7 @@ describe('BoboCommand Reply Tests', () => {
     await boboCommand.execute(mockMessage, ['你好'])
 
     expect(mockMessage.reply).toHaveBeenCalled()
-    expect(mockMessage.channel.send).toHaveBeenCalledWith('這是波波的回答')
+    expect(mockMessage.channel.send).toHaveBeenCalledWith('這是波波的回答' + BOBO_DIALOGUE_SIGNATURE)
   })
 
   test('should not crash if both message.reply and channel.send throw errors', async () => {

@@ -3,6 +3,8 @@ import { Command } from './command.interface'
 import { chatWithBobo, getHybridContext, updateMemoryInBackground } from '../utils/gemini'
 import auth from '../../config/auth.json'
 import axios from 'axios'
+import { BOBO_DIALOGUE_SIGNATURE } from '../features/message'
+
 
 /**
  * 檢查 Discord 附件連結是否已過期或無效
@@ -224,7 +226,7 @@ export class BoboCommand implements Command {
           prompt = '請回覆此訊息。'
         }
       } else {
-        await safeReply(message, '叫波波幹嘛？後面要加上你想說的話或提供圖片啦！')
+        await safeReply(message, '叫波波幹嘛？後面要加上你想說的話或提供圖片啦！' + BOBO_DIALOGUE_SIGNATURE)
         return
       }
     }
@@ -605,18 +607,20 @@ export class BoboCommand implements Command {
         console.error('[Memory Update Background Error]:', err)
       })
 
+      const signedReply = reply + BOBO_DIALOGUE_SIGNATURE
+
       // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
-      if (reply.length <= 2000) {
+      if (signedReply.length <= 2000) {
         if (statusMessage) {
-          await safeEdit(statusMessage, message, reply)
+          await safeEdit(statusMessage, message, signedReply)
         } else {
-          await safeReply(message, reply)
+          await safeReply(message, signedReply)
         }
       } else {
         const CHUNK_SIZE = 1900
         const chunks: string[] = []
-        for (let i = 0; i < reply.length; i += CHUNK_SIZE) {
-          chunks.push(reply.substring(i, i + CHUNK_SIZE))
+        for (let i = 0; i < signedReply.length; i += CHUNK_SIZE) {
+          chunks.push(signedReply.substring(i, i + CHUNK_SIZE))
         }
 
         if (chunks.length > 0) {

@@ -11,8 +11,10 @@ import {
   getMediaCommand,
   readCommandDict,
   isCustomCommandResponse,
-  shouldSkipDialogueTrigger
+  shouldSkipDialogueTrigger,
+  BOBO_DIALOGUE_SIGNATURE
 } from '../../src/features/message'
+import { clientManager } from '../../src/utils/client'
 import { CustomCommand } from '../../src/commands/custom'
 import { getDb } from '../../src/utils/db'
 import * as fileManager from '../../src/utils/file'
@@ -83,7 +85,19 @@ const mockMessage = (content: string, guildId = 'test_guild_message_feature', at
   } as any
 }
 
+const mockBotMessage = (content: string, guildId = 'test_guild_message_feature', attachmentsList: any[] = []) => {
+  const msg = mockMessage(content, guildId, attachmentsList)
+  msg.author.id = 'bot_id'
+  msg.author.bot = true
+  return msg
+}
+
 describe('Message Feature Tests', () => {
+  beforeAll(() => {
+    clientManager.setClient({
+      user: { id: 'bot_id' }
+    } as any)
+  })
   describe('checkPrefix', () => {
     test('should return true for messages starting with ! or ！', () => {
       expect(checkPrefix(mockMessage('!help'))).toBe(true)
@@ -582,31 +596,31 @@ describe('Message Feature Tests', () => {
 
     test('should return true if replied message has a slash command interaction with commandName !== bobo', () => {
       const msg = mockMessage('hello')
-      const repliedMsg = mockMessage('some reply content', 'test_guild_message_feature')
+      const repliedMsg = mockBotMessage('some reply content', 'test_guild_message_feature')
       ;(repliedMsg as any).interaction = { id: 'slash_interaction_id', commandName: 'setting' }
       expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
     })
 
     test('should return false if replied message has a slash command interaction with commandName === bobo', () => {
       const msg = mockMessage('hello')
-      const repliedMsg = mockMessage('some reply content', 'test_guild_message_feature')
+      const repliedMsg = mockBotMessage('some reply content' + BOBO_DIALOGUE_SIGNATURE, 'test_guild_message_feature')
       ;(repliedMsg as any).interaction = { id: 'slash_interaction_id', commandName: 'bobo' }
       expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(false)
     })
 
     test('should return true if replied message is a custom command response', () => {
       const msg = mockMessage('hello', 'test_guild_message_feature')
-      const repliedMsg = mockMessage('dummy_response', 'test_guild_message_feature')
+      const repliedMsg = mockBotMessage('dummy_response', 'test_guild_message_feature')
       expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
     })
 
     test('should return true if replied message content matches a bot command response pattern', () => {
       const msg = mockMessage('hello')
-      const repliedMsg1 = mockMessage('投票：結束點名 (3/3)')
-      const repliedMsg2 = mockMessage('抽獎清單以及說明')
-      const repliedMsg3 = mockMessage('機器人伺服器設定')
-      const repliedMsg4 = mockMessage('長期記憶功能已開啟')
-      const repliedMsg5 = mockMessage('股票歷史走勢')
+      const repliedMsg1 = mockBotMessage('投票：結束點名 (3/3)')
+      const repliedMsg2 = mockBotMessage('抽獎清單以及說明')
+      const repliedMsg3 = mockBotMessage('機器人伺服器設定')
+      const repliedMsg4 = mockBotMessage('長期記憶功能已開啟')
+      const repliedMsg5 = mockBotMessage('股票歷史走勢')
 
       expect(shouldSkipDialogueTrigger(msg, repliedMsg1)).toBe(true)
       expect(shouldSkipDialogueTrigger(msg, repliedMsg2)).toBe(true)
@@ -635,7 +649,19 @@ describe('Message Feature Tests', () => {
 
     test('should return false if it is a normal user text reply to the bot', () => {
       const msg = mockMessage('你好啊')
-      const repliedMsg = mockMessage('哈囉！我是波波。')
+      const repliedMsg = mockBotMessage('哈囉！我是波波。' + BOBO_DIALOGUE_SIGNATURE)
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(false)
+    })
+
+    test('should return true if it is a bot reply but has no signature', () => {
+      const msg = mockMessage('你好啊')
+      const repliedMsg = mockBotMessage('哈囉！我是波波。')
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
+    })
+
+    test('should return false if it is a normal user text reply to the bot containing the word stock', () => {
+      const msg = mockMessage('這支股票推薦買嗎？')
+      const repliedMsg = mockBotMessage('看看這檔股票過去強勢時的表現再做決定。' + BOBO_DIALOGUE_SIGNATURE)
       expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(false)
     })
   })
