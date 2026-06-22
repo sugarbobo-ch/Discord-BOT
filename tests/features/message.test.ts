@@ -580,11 +580,18 @@ describe('Message Feature Tests', () => {
       expect(shouldSkipDialogueTrigger(msg, repliedMsg4)).toBe(true)
     })
 
-    test('should return true if replied message has a slash command interaction', () => {
+    test('should return true if replied message has a slash command interaction with commandName !== bobo', () => {
       const msg = mockMessage('hello')
       const repliedMsg = mockMessage('some reply content', 'test_guild_message_feature')
-      ;(repliedMsg as any).interaction = { id: 'slash_interaction_id' }
+      ;(repliedMsg as any).interaction = { id: 'slash_interaction_id', commandName: 'setting' }
       expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(true)
+    })
+
+    test('should return false if replied message has a slash command interaction with commandName === bobo', () => {
+      const msg = mockMessage('hello')
+      const repliedMsg = mockMessage('some reply content', 'test_guild_message_feature')
+      ;(repliedMsg as any).interaction = { id: 'slash_interaction_id', commandName: 'bobo' }
+      expect(shouldSkipDialogueTrigger(msg, repliedMsg)).toBe(false)
     })
 
     test('should return true if replied message is a custom command response', () => {

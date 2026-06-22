@@ -661,7 +661,7 @@ export const shouldSkipDialogueTrigger = (message: Message, repliedMsg: Message 
     }
 
     // B. 偵測是否為斜線指令的回應 (由 Discord API 標記 of interaction)
-    if (repliedMsg.interaction) {
+    if (repliedMsg.interaction && repliedMsg.interaction.commandName !== 'bobo') {
       return true
     }
 

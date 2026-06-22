@@ -105,18 +105,21 @@ client.on('messageCreate', async (message: Message) => {
 
   let result = messageCtrl.checkPrefix(message)
   if (!result) {
-    // 檢查是否直接 tag / mention 機器人，或是回覆機器人的訊息 (即便回覆時關閉了 ping 依然觸發)
-    const isReplyToBot = message.reference && message.mentions.repliedUser?.id === client.user?.id
-    if (client.user && (message.mentions.has(client.user) || isReplyToBot)) {
-      let repliedMsg: Message | null = null
-      if (message.reference && message.reference.messageId) {
-        try {
-          repliedMsg = await message.channel.messages.fetch(message.reference.messageId)
-        } catch (err: any) {
-          console.warn('Failed to fetch referenced message in trigger check:', err.message)
-        }
-      }
+    let repliedMsg: Message | null = null
+    let isReplyToBot = false
 
+    if (message.reference && message.reference.messageId) {
+      try {
+        repliedMsg = await message.channel.messages.fetch(message.reference.messageId)
+        isReplyToBot = repliedMsg?.author.id === client.user?.id
+      } catch (err: any) {
+        console.warn('Failed to fetch referenced message in trigger check:', err.message)
+        // 回退至原先的 ping 偵測方式
+        isReplyToBot = message.mentions.repliedUser?.id === client.user?.id
+      }
+    }
+
+    if (client.user && (message.mentions.has(client.user) || isReplyToBot)) {
       if (!messageCtrl.shouldSkipDialogueTrigger(message, repliedMsg)) {
         const boboCmd = commandRegistry.get('bobo')
         if (boboCmd) {
