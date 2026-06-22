@@ -13,7 +13,7 @@ vi.mock('../../src/utils/gemini', () => ({
     const historyMsgs = [...msgArray]
     if (message.reference && message.reference.messageId) {
       const replied = await message.channel.messages.fetch(message.reference.messageId)
-      const hasRepliedInHistory = historyMsgs.some(m => m.id === replied.id)
+      const hasRepliedInHistory = historyMsgs.some((m: any) => m.id === replied.id)
       if (!hasRepliedInHistory) {
         historyMsgs.push(replied)
       }

@@ -461,4 +461,137 @@ describe('MemoryCommand Tests', () => {
       })
     )
   })
+
+  test('should support pagination and show correct items on page 1 and page 2', async () => {
+    const mockMemories = Array.from({ length: 12 }, (_, i) => ({
+      id: `mem_${i + 1}`,
+      memory: `Memory item number ${i + 1}`,
+      createdAt: new Date(new Date('2026-06-11T12:00:00Z').getTime() + i * 60000).toISOString()
+    }))
+    // default sort is new to old, so mem_12 is newest (index 0 on page 1), mem_1 is oldest (index 11 on page 2)
+    mockGetAll.mockResolvedValueOnce({ results: mockMemories })
+
+    let collectCallback: any
+    const mockCollector = {
+      on: vi.fn().mockImplementation((event, cb) => {
+        if (event === 'collect') {
+          collectCallback = cb
+        }
+      })
+    }
+    const mockResponse = {
+      createMessageComponentCollector: vi.fn().mockReturnValue(mockCollector),
+      edit: vi.fn().mockResolvedValue(true)
+    }
+    mockMessage.reply.mockResolvedValueOnce(mockResponse)
+
+    mockMessage.content = '!記憶 查看'
+    await memoryCommand.execute(mockMessage, ['查看'])
+
+    expect(mockMessage.reply).toHaveBeenCalled()
+    const callArgs = mockMessage.reply.mock.calls[0][0]
+    const embed1 = callArgs.embeds[0]
+    expect(embed1.data.fields).toHaveLength(10)
+    // Page 1 footer check
+    expect(embed1.data.footer.text).toBe('第 1 / 2 頁 • 記憶資料庫')
+    
+    // First page items (newest to oldest)
+    // mem_12 (index 0) to mem_3 (index 9)
+    expect(embed1.data.fields[0].value).toContain('Memory item number 12')
+    expect(embed1.data.fields[9].value).toContain('Memory item number 3')
+
+    // Click next page button
+    const mockNextPageInteraction = {
+      customId: 'next_page',
+      user: { id: mockMessage.author.id },
+      update: vi.fn().mockResolvedValue(true)
+    }
+    await collectCallback(mockNextPageInteraction)
+
+    expect(mockNextPageInteraction.update).toHaveBeenCalled()
+    const updateArgs = mockNextPageInteraction.update.mock.calls[0][0]
+    const embed2 = updateArgs.embeds[0]
+    expect(embed2.data.fields).toHaveLength(2)
+    expect(embed2.data.footer.text).toBe('第 2 / 2 頁 • 記憶資料庫')
+    // Page 2 items
+    // mem_2 (index 10) and mem_1 (index 11)
+    expect(embed2.data.fields[0].value).toContain('Memory item number 2')
+    expect(embed2.data.fields[1].value).toContain('Memory item number 1')
+  })
+
+  test('should handle select menu deletion on page 2 correctly', async () => {
+    const mockMemories = Array.from({ length: 12 }, (_, i) => ({
+      id: `mem_${i + 1}`,
+      memory: `Memory item number ${i + 1}`,
+      createdAt: new Date(new Date('2026-06-11T12:00:00Z').getTime() + i * 60000).toISOString()
+    }))
+    mockGetAll.mockResolvedValueOnce({ results: mockMemories })
+
+    let collectCallback: any
+    const mockCollector = {
+      on: vi.fn().mockImplementation((event, cb) => {
+        if (event === 'collect') {
+          collectCallback = cb
+        }
+      }),
+      stop: vi.fn()
+    }
+    const mockResponse = {
+      createMessageComponentCollector: vi.fn().mockReturnValue(mockCollector),
+      edit: vi.fn().mockResolvedValue(true)
+    }
+    mockMessage.reply.mockResolvedValueOnce(mockResponse)
+
+    mockMessage.content = '!記憶 查看'
+    await memoryCommand.execute(mockMessage, ['查看'])
+
+    // 1. 翻到第二頁
+    const mockNextPageInteraction = {
+      customId: 'next_page',
+      user: { id: mockMessage.author.id },
+      update: vi.fn().mockResolvedValue(true)
+    }
+    await collectCallback(mockNextPageInteraction)
+
+    // 2. 開啟刪除模式
+    const mockToggleInteraction = {
+      customId: 'toggle_delete',
+      user: { id: mockMessage.author.id },
+      update: vi.fn().mockResolvedValue(true)
+    }
+    await collectCallback(mockToggleInteraction)
+
+    // Verify select menu options generated for page 2
+    // On page 2, we have items index 11 (#11, mem_2) and index 12 (#12, mem_1)
+    const toggleUpdateArgs = mockToggleInteraction.update.mock.calls[0][0]
+    const selectMenuRow = toggleUpdateArgs.components[1]
+    const selectMenuOptions = selectMenuRow.components[0].options
+    expect(selectMenuOptions).toHaveLength(2)
+    expect(selectMenuOptions[0].data.label).toBe('刪除第 #11 條記憶')
+    expect(selectMenuOptions[0].data.value).toBe('delete_mem_2')
+    expect(selectMenuOptions[1].data.label).toBe('刪除第 #12 條記憶')
+    expect(selectMenuOptions[1].data.value).toBe('delete_mem_1')
+
+    // 3. 模擬下拉選單刪除第 #11 條記憶 (mem_2)
+    // 刪除後，mock re-fetch 剩餘的 11 條記憶 (mem_12 to mem_3, and mem_1)
+    const updatedMemories = mockMemories.filter(m => m.id !== 'mem_2')
+    mockGetAll.mockResolvedValueOnce({ results: updatedMemories })
+
+    const mockSelectInteraction = {
+      customId: 'delete_memory_select',
+      values: ['delete_mem_2'],
+      user: { id: mockMessage.author.id },
+      deferReply: vi.fn().mockResolvedValue(true),
+      editReply: vi.fn().mockResolvedValue(true)
+    }
+    await collectCallback(mockSelectInteraction)
+
+    expect(mockSelectInteraction.deferReply).toHaveBeenCalled()
+    expect(mockDelete).toHaveBeenCalledWith('mem_2')
+    expect(mockSelectInteraction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('已成功刪除長期記憶')
+      })
+    )
+  })
 })

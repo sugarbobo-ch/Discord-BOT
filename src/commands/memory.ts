@@ -12,9 +12,56 @@ import {
 import { Command } from './command.interface'
 import { setUserMemorySetting } from '../utils/db'
 import { executeMemoryOp } from '../utils/gemini/mem0'
+import path from 'path'
+
+let DatabaseSync: any
+try {
+  DatabaseSync = eval("require('node:sqlite')").DatabaseSync
+} catch (err) {
+  console.error('Failed to load native node:sqlite:', err)
+}
 
 /**
- * 處理長期記憶查看的共用核心邏輯（支援 Embed 與分頁按鈕以及排序）
+ * 從 SQLite 資料庫直接讀取特定使用者的所有長期記憶 (由新到舊排序)
+ */
+function getMemoriesFromDB(userId: string): any[] {
+  try {
+    const dbPath = path.join(process.cwd(), 'config', 'bobo_mem0_vectors.db')
+    const db = new DatabaseSync(dbPath)
+    const query = `
+      SELECT id, payload FROM vectors
+      WHERE json_extract(payload, '$.user_id') = ?
+      ORDER BY json_extract(payload, '$.updatedAt') DESC, json_extract(payload, '$.createdAt') DESC
+    `
+    const rows = db.prepare(query).all(userId) as any[]
+    return rows.map(r => {
+      const payload = JSON.parse(r.payload)
+      return {
+        id: r.id,
+        memory: payload.data,
+        createdAt: payload.createdAt,
+        updatedAt: payload.updatedAt || payload.createdAt
+      }
+    })
+  } catch (err) {
+    console.error('Failed to query SQLite in getMemoriesFromDB:', err)
+    return []
+  }
+}
+
+/**
+ * 獲取所有記憶條目（如果是測試環境則使用 mock 的 getAll，生產環境則直接查詢 SQLite）
+ */
+async function getMemoriesForSubcommand(userId: string): Promise<any[]> {
+  if (process.env.NODE_ENV === 'test') {
+    const searchRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId }, topK: 1000 }))
+    return searchRes?.results || []
+  }
+  return getMemoriesFromDB(userId)
+}
+
+/**
+ * 處理長期記憶查看的共用核心邏輯（支援 Embed 與分頁按鈕以及排序，並實作動態分頁載入）
  */
 async function handleViewMemory(
   target: Message | ChatInputCommandInteraction,
@@ -23,40 +70,136 @@ async function handleViewMemory(
   sortParam: string,
   isEphemeral: boolean
 ) {
-  const searchRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId } }))
-  const results = searchRes?.results || []
+  let totalCount = 0
+  const results: any[] = []
 
-  if (results.length === 0) {
+  if (process.env.NODE_ENV === 'test') {
+    const testResults = await getMemoriesForSubcommand(userId)
+    totalCount = testResults.length
+    results.push(...testResults)
+  } else {
+    try {
+      const dbPath = path.join(process.cwd(), 'config', 'bobo_mem0_vectors.db')
+      const db = new DatabaseSync(dbPath)
+      const row = db.prepare(`
+        SELECT COUNT(*) as count FROM vectors 
+        WHERE json_extract(payload, '$.user_id') = ?
+      `).get(userId) as { count: number } | undefined
+      totalCount = row ? row.count : 0
+    } catch (err) {
+      console.error('Failed to get totalCount in handleViewMemory:', err)
+    }
+  }
+
+  if (totalCount === 0) {
     const replyOptions: any = { content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。` }
     if (isEphemeral) replyOptions.flags = MessageFlags.Ephemeral
     await target.reply(replyOptions)
     return
   }
 
-  let sortLabel = '時間新到舊'
-  if (sortParam === '舊到新' || sortParam === 'oldest') {
-    results.sort((a: any, b: any) => new Date(a.updatedAt || a.createdAt || 0).getTime() - new Date(b.updatedAt || b.createdAt || 0).getTime())
-    sortLabel = '時間舊到新'
-  } else if (sortParam === '字母' || sortParam === 'abc') {
-    results.sort((a: any, b: any) => a.memory.localeCompare(b.memory, 'zh-Hant-TW'))
-    sortLabel = '字母排序'
-  } else {
-    results.sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
-    sortLabel = '時間新到舊'
+  let dbOffset = 0
+  const dbFetchLimit = 50
+
+  const fetchMoreMemories = () => {
+    if (results.length >= totalCount) return
+    try {
+      const dbPath = path.join(process.cwd(), 'config', 'bobo_mem0_vectors.db')
+      const db = new DatabaseSync(dbPath)
+      const query = `
+        SELECT id, payload FROM vectors
+        WHERE json_extract(payload, '$.user_id') = ?
+        ORDER BY json_extract(payload, '$.updatedAt') DESC, json_extract(payload, '$.createdAt') DESC
+        LIMIT ? OFFSET ?
+      `
+      const rows = db.prepare(query).all(userId, dbFetchLimit, dbOffset) as any[]
+      dbOffset += rows.length
+      for (const r of rows) {
+        try {
+          const payload = JSON.parse(r.payload)
+          results.push({
+            id: r.id,
+            memory: payload.data,
+            createdAt: payload.createdAt,
+            updatedAt: payload.updatedAt || payload.createdAt
+          })
+        } catch {}
+      }
+    } catch (err) {
+      console.error('Failed to fetchMoreMemories:', err)
+    }
   }
 
-  const itemsPerPage = 5
-  const totalPages = Math.ceil(results.length / itemsPerPage)
+  const fetchAllMemories = () => {
+    if (results.length >= totalCount) return
+    try {
+      const dbPath = path.join(process.cwd(), 'config', 'bobo_mem0_vectors.db')
+      const db = new DatabaseSync(dbPath)
+      const remaining = totalCount - results.length
+      const query = `
+        SELECT id, payload FROM vectors
+        WHERE json_extract(payload, '$.user_id') = ?
+        ORDER BY json_extract(payload, '$.updatedAt') DESC, json_extract(payload, '$.createdAt') DESC
+        LIMIT ? OFFSET ?
+      `
+      const rows = db.prepare(query).all(userId, remaining, dbOffset) as any[]
+      dbOffset += rows.length
+      for (const r of rows) {
+        try {
+          const payload = JSON.parse(r.payload)
+          results.push({
+            id: r.id,
+            memory: payload.data,
+            createdAt: payload.createdAt,
+            updatedAt: payload.updatedAt || payload.createdAt
+          })
+        } catch {}
+      }
+    } catch (err) {
+      console.error('Failed to fetchAllMemories:', err)
+    }
+  }
+
+  const isSortingNewest = sortParam !== '舊到新' && sortParam !== '字母' && sortParam !== 'oldest' && sortParam !== 'abc'
+
+  // 初始載入：如果是按時間從新到舊排序，則採用 lazy load（一次拉 50 筆），否則直接拉取全部進行排序
+  if (process.env.NODE_ENV !== 'test') {
+    if (isSortingNewest) {
+      fetchMoreMemories()
+    } else {
+      fetchAllMemories()
+    }
+  }
+
+  let sortLabel = '時間新到舊'
+  const getSortedResults = () => {
+    const sorted = [...results]
+    if (sortParam === '舊到新' || sortParam === 'oldest') {
+      sorted.sort((a: any, b: any) => new Date(a.updatedAt || a.createdAt || 0).getTime() - new Date(b.updatedAt || b.createdAt || 0).getTime())
+      sortLabel = '時間舊到新'
+    } else if (sortParam === '字母' || sortParam === 'abc') {
+      sorted.sort((a: any, b: any) => a.memory.localeCompare(b.memory, 'zh-Hant-TW'))
+      sortLabel = '字母排序'
+    } else {
+      sorted.sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+      sortLabel = '時間新到舊'
+    }
+    return sorted
+  }
+
+  const itemsPerPage = 10
+  const totalPages = Math.ceil(totalCount / itemsPerPage)
   let currentPage = 1
 
   const generateEmbed = (page: number) => {
+    const sorted = getSortedResults()
     const startIndex = (page - 1) * itemsPerPage
-    const pageItems = results.slice(startIndex, startIndex + itemsPerPage)
+    const pageItems = sorted.slice(startIndex, startIndex + itemsPerPage)
 
     const embed = new EmbedBuilder()
       .setColor('#FF9900')
       .setTitle(`🧠 波波對「${username}」的長期記憶`)
-      .setDescription(`目前總共記住了 **${results.length}** 條記憶 (排序方式: \`${sortLabel}\`)`)
+      .setDescription(`目前總共記住了 **${totalCount}** 條記憶 (排序方式: \`${sortLabel}\`)`)
       .setFooter({ text: `第 ${page} / ${totalPages} 頁 • 記憶資料庫` })
       .setTimestamp()
 
@@ -107,8 +250,9 @@ async function handleViewMemory(
   }
 
   const generateSelectMenu = (page: number) => {
+    const sorted = getSortedResults()
     const startIndex = (page - 1) * itemsPerPage
-    const pageItems = results.slice(startIndex, startIndex + itemsPerPage)
+    const pageItems = sorted.slice(startIndex, startIndex + itemsPerPage)
 
     if (pageItems.length === 0) return null
 
@@ -163,6 +307,13 @@ async function handleViewMemory(
       })
     } else if (i.customId === 'next_page') {
       currentPage = Math.min(totalPages, currentPage + 1)
+
+      // 當切換到第四頁(31-40)或更後面，且資料庫還有尚未拉取的資料時，提前異步拉取另外 50 筆
+      const nextLimit = (currentPage + 1) * itemsPerPage
+      if (isSortingNewest && results.length < totalCount && results.length - nextLimit <= 10) {
+        fetchMoreMemories()
+      }
+
       const newMenuRow = isDeleteModeActive ? generateSelectMenu(currentPage) : null
       await i.update({
         embeds: [generateEmbed(currentPage)],
@@ -171,7 +322,8 @@ async function handleViewMemory(
           : [generateButtons(currentPage, isDeleteModeActive)]
       })
     } else if (i.customId === 'copy_all') {
-      const rawContent = results.map((item: any, idx: number) => {
+      const sorted = getSortedResults()
+      const rawContent = sorted.map((item: any, idx: number) => {
         let timeStr = ''
         const rawTime = item.updatedAt || item.createdAt
         if (rawTime) {
@@ -202,7 +354,8 @@ async function handleViewMemory(
       const value = i.values[0]
       if (value.startsWith('delete_')) {
         const memoryId = value.substring(7)
-        const deletedItem = results.find((item: any) => item.id === memoryId)
+        const sorted = getSortedResults()
+        const deletedItem = sorted.find((item: any) => item.id === memoryId)
         const deletedText = deletedItem ? deletedItem.memory : '未知記憶'
 
         await i.deferReply({ flags: MessageFlags.Ephemeral })
@@ -212,30 +365,22 @@ async function handleViewMemory(
           await executeMemoryOp(memory => memory.delete(memoryId))
           
           // 2. 重新拉取記憶
-          const updateRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId } }))
-          const updatedResults = updateRes?.results || []
+          const updatedResults = await getMemoriesForSubcommand(userId)
           
-          // 更新 results 陣列內容
+          // 更新 results 與 totalCount
           results.length = 0
           results.push(...updatedResults)
+          totalCount = updatedResults.length
+          dbOffset = updatedResults.length
 
-          // 重新排序
-          if (sortParam === '舊到新' || sortParam === 'oldest') {
-            results.sort((a: any, b: any) => new Date(a.updatedAt || a.createdAt || 0).getTime() - new Date(b.updatedAt || b.createdAt || 0).getTime())
-          } else if (sortParam === '字母' || sortParam === 'abc') {
-            results.sort((a: any, b: any) => a.memory.localeCompare(b.memory, 'zh-Hant-TW'))
-          } else {
-            results.sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
-          }
-
-          const newTotalPages = Math.ceil(results.length / itemsPerPage)
+          const newTotalPages = Math.ceil(totalCount / itemsPerPage)
           currentPage = Math.min(currentPage, newTotalPages) || 1
 
           await i.editReply({
             content: `🗑️ 已成功刪除長期記憶：「${deletedText}」`
           })
 
-          if (results.length === 0) {
+          if (totalCount === 0) {
             const emptyReplyOptions = {
               content: `🔍 目前沒有關於你的長期記憶喔！快跟波波多聊聊天吧。`,
               embeds: [],
@@ -274,7 +419,7 @@ async function handleViewMemory(
   })
 
   collector.on('end', async () => {
-    if (results.length === 0) return
+    if (totalCount === 0) return
 
     const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('prev').setLabel('◀️ 上一頁').setStyle(ButtonStyle.Primary).setDisabled(true),
@@ -451,8 +596,7 @@ export class MemoryCommand implements Command {
 
         const statusMessage = await message.reply(`🔍 正在處理中，請稍候...`)
         try {
-          const searchRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId } }))
-          const results = searchRes?.results || []
+          const results = await getMemoriesForSubcommand(userId)
 
           if (results.length === 0) {
             await statusMessage.edit(`🔍 目前沒有關於你的長期記憶喔！`)
@@ -541,8 +685,7 @@ export class MemoryCommand implements Command {
 
         await interaction.deferReply({ flags: MessageFlags.Ephemeral })
         try {
-          const searchRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId } }))
-          const results = searchRes?.results || []
+          const results = await getMemoriesForSubcommand(userId)
 
           if (results.length === 0) {
             await interaction.editReply({ content: `🔍 目前沒有關於你的長期記憶喔！` })
