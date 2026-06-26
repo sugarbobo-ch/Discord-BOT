@@ -119,7 +119,7 @@ client.on('messageCreate', async (message: Message) => {
       }
     }
 
-    if (client.user && (message.mentions.has(client.user) || isReplyToBot)) {
+    if (client.user && (message.mentions.users.has(client.user.id) || isReplyToBot)) {
       if (!messageCtrl.shouldSkipDialogueTrigger(message, repliedMsg)) {
         const boboCmd = commandRegistry.get('bobo')
         if (boboCmd) {
