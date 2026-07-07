@@ -25,6 +25,14 @@ import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
 
 let count = 0
 
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
+})
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception thrown:', err)
+})
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
