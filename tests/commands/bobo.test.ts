@@ -255,4 +255,49 @@ describe('BoboCommand Reply Tests', () => {
     expect(mockSend).toHaveBeenCalledWith({ content: '\u200B' })
     expect(mockDelete).toHaveBeenCalled()
   })
+
+  describe('executeSlash (slash commands)', () => {
+    let mockInteraction: any
+
+    beforeEach(() => {
+      mockInteraction = {
+        id: 'interaction_id',
+        commandName: 'bobo',
+        options: {
+          getString: vi.fn().mockReturnValue('哈囉波波'),
+          getAttachment: vi.fn().mockReturnValue(null)
+        },
+        user: { id: 'user_123', username: 'user_123' },
+        member: { displayName: '大華' },
+        client: { user: { id: 'bot_id' } },
+        guild: { name: '測試伺服器' },
+        guildId: 'guild_123',
+        channelId: 'channel_123',
+        channel: {
+          isTextBased: () => true,
+          sendTyping: vi.fn().mockResolvedValue(true),
+          messages: {
+            fetch: vi.fn().mockResolvedValue({ values: () => [] })
+          },
+          send: vi.fn().mockImplementation(options => {
+            if (options && options.content === '\u200B') {
+              return Promise.resolve({ delete: vi.fn().mockResolvedValue(true) })
+            }
+            return Promise.resolve({ edit: vi.fn().mockResolvedValue(true) })
+          })
+        },
+        reply: vi.fn().mockResolvedValue(true),
+        editReply: vi.fn().mockResolvedValue(true),
+        followUp: vi.fn().mockResolvedValue(true)
+      } as any
+    })
+
+    test('should execute bobo command with prompt option successfully', async () => {
+      await boboCommand.executeSlash(mockInteraction)
+
+      expect(mockInteraction.options.getString).toHaveBeenCalledWith('對話內容')
+      expect(chatWithBobo).toHaveBeenCalled()
+      expect(mockInteraction.reply).toHaveBeenCalledWith(expect.stringContaining('這是波波的回答'))
+    })
+  })
 })

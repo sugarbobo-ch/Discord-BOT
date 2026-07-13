@@ -1,6 +1,7 @@
-import { Message, EmbedBuilder, User } from 'discord.js'
+import { Message, EmbedBuilder, User, ChatInputCommandInteraction } from 'discord.js'
 import moment from 'moment'
 import { Command } from './command.interface'
+import { CommandContext } from '../utils/context'
 
 interface RollCallMember {
   time: string
@@ -20,45 +21,111 @@ const serverRollcallDict: Record<string, RollCallInfo> = {}
 export class RollCallCommand implements Command {
   public names = ['點名', '開始點名', '點名清單', '結束點名']
 
+  public slashData = [
+    {
+      name: '開始點名',
+      description: '發起一個新的點名活動',
+      options: [
+        {
+          name: '標題',
+          type: 3, // String
+          description: '點名活動的標題',
+          required: false
+        }
+      ]
+    },
+    {
+      name: '點名',
+      description: '進行簽到點名',
+      options: [
+        {
+          name: '備註',
+          type: 3, // String
+          description: '點名備註（例如：在線上、請假等）',
+          required: false
+        }
+      ]
+    },
+    {
+      name: '點名清單',
+      description: '查看當前已點名的成員清單'
+    },
+    {
+      name: '結束點名',
+      description: '投票結束當前點名（需要3人同意）'
+    }
+  ]
+
   public execute(message: Message, args: string[]): void {
-    if (!message.guild) return
     const cmd = message.content.substring(1).split(' ')[0].toLowerCase()
+    const ctx = new CommandContext(message)
     switch (cmd) {
       case '點名':
-        this.addRollCallMember(message, args)
+        this.addRollCallMember(ctx, args[0] || '')
         break
       case '開始點名':
-        this.checkRollCall(message, true, args)
+        this.checkRollCall(ctx, true, args[0] || '')
         break
       case '點名清單':
-        this.checkRollCall(message, false, args)
+        this.checkRollCall(ctx, false, '')
         break
       case '結束點名':
-        this.endRollCall(message)
+        this.endRollCall(ctx)
         break
     }
   }
 
-  private checkRollCall(message: Message, forceReset: boolean, args: string[]): void {
-    if (!message.guild) return
-    const serverId = message.guild.id
+  public async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const cmd = interaction.commandName.toLowerCase()
+    const ctx = new CommandContext(interaction)
+    switch (cmd) {
+      case '點名': {
+        const remark = interaction.options.getString('備註') || ''
+        this.addRollCallMember(ctx, remark)
+        break
+      }
+      case '開始點名': {
+        const title = interaction.options.getString('標題') || ''
+        this.checkRollCall(ctx, true, title)
+        break
+      }
+      case '點名清單':
+        this.checkRollCall(ctx, false, '')
+        break
+      case '結束點名':
+        this.endRollCall(ctx)
+        break
+    }
+  }
+
+  private checkRollCall(ctx: CommandContext, forceReset: boolean, title: string): void {
+    const serverId = ctx.guildId
+    if (!serverId) return
+
     if (serverRollcallDict[serverId] === undefined) {
-      const title = args[0] || ''
       serverRollcallDict[serverId] = {
         title,
         rollCallList: [],
         isOpen: true,
         votesForCloseRoll: 0
       }
-      message.reply(`已建立${title}點名清單，滿3人使用 !結束點名 指令即可停止點名`)
+      ctx.reply(`已建立${title}點名清單，滿3人使用 /結束點名 指令即可停止點名`)
     } else {
       const rollCall = serverRollcallDict[serverId]
       if (!forceReset) {
-        const title = rollCall.title.length > 0 ? rollCall.title + ' ' : ''
-        const setCount = rollCall.rollCallList.length / 10
+        const titleStr = rollCall.title.length > 0 ? rollCall.title + ' ' : ''
+        const setCount = Math.ceil(rollCall.rollCallList.length / 10)
+        
+        if (rollCall.rollCallList.length === 0) {
+          ctx.reply(`目前${titleStr}點名清單尚未有任何成員簽到。`)
+          return
+        }
+
+        // Send first response
+        let replied = false
         for (let i = 0; i < setCount; i++) {
           const embed = new EmbedBuilder()
-            .setTitle(`${title}點名清單`)
+            .setTitle(`${titleStr}點名清單`)
             .setDescription('目前已點名的人，請注意是否有代點名的狀況出現：')
 
           const fields = rollCall.rollCallList.slice(i * 10, (i + 1) * 10).map(member => ({
@@ -69,63 +136,70 @@ export class RollCallCommand implements Command {
           if (fields.length > 0) {
             embed.addFields(fields)
           }
-          ;(message.channel as any).send({ embeds: [embed] })
+
+          if (!replied) {
+            ctx.reply({ embeds: [embed] })
+            replied = true
+          } else {
+            ctx.channelSend({ embeds: [embed] })
+          }
         }
       } else {
         if (rollCall.isOpen) {
-          message.reply('請先投票關閉點名後才可以開始新的點名')
+          ctx.reply('請先投票關閉點名後才可以開始新的點名')
           return
         }
-        const title = args[0] || ''
         serverRollcallDict[serverId] = {
           title,
           rollCallList: [],
           isOpen: true,
           votesForCloseRoll: 0
         }
-        message.reply(`已建立${title}點名清單，滿3人使用 !結束點名 指令即可停止點名`)
+        ctx.reply(`已建立${title}點名清單，滿3人使用 /結束點名 指令即可停止點名`)
       }
     }
   }
 
-  private addRollCallMember(message: Message, args: string[]): void {
-    if (!message.guild) return
-    const serverId = message.guild.id
+  private addRollCallMember(ctx: CommandContext, textVal: string): void {
+    const serverId = ctx.guildId
+    if (!serverId) return
+
     if (serverRollcallDict[serverId] === undefined) {
-      message.reply('此伺服器尚未建立點名清單，請使用 !開始點名 [標題] 來建立點名清單')
+      ctx.reply('此伺服器尚未建立點名清單，請使用 /開始點名 [標題] 來建立點名清單')
     } else {
       const rollCall = serverRollcallDict[serverId]
       if (!rollCall.isOpen) {
-        message.reply('已經關閉點名，下次請早')
+        ctx.reply('已經關閉點名，下次請早')
         return
       }
-      const text = args[0] || message.author
+      const text = textVal || ctx.user
       rollCall.rollCallList.push({
         time: moment().format('HH:mm:ss'),
         text,
-        author: message.author
+        author: ctx.user
       })
-      message.reply(`您已完成點名：${text}`)
+      ctx.reply(`您已完成點名：${text}`)
     }
   }
 
-  private endRollCall(message: Message): void {
-    if (!message.guild) return
-    const serverId = message.guild.id
+  private endRollCall(ctx: CommandContext): void {
+    const serverId = ctx.guildId
+    if (!serverId) return
+
     if (serverRollcallDict[serverId] === undefined) {
-      message.reply('此伺服器尚未建立點名清單，請使用 !開始點名 [標題] 來建立點名清單')
+      ctx.reply('此伺服器尚未建立點名清單，請使用 /開始點名 [標題] 來建立點名清單')
     } else {
       const rollCall = serverRollcallDict[serverId]
       if (!rollCall.isOpen || rollCall.votesForCloseRoll >= 3) {
-        message.reply('目前點名狀態已經關閉')
+        ctx.reply('目前點名狀態已經關閉')
         return
       }
       rollCall.votesForCloseRoll += 1
       if (rollCall.votesForCloseRoll === 3) {
         rollCall.isOpen = false
-        message.reply(`投票：結束${rollCall.title}點名 (3/3)，關閉${rollCall.title}點名`)
+        ctx.reply(`投票：結束${rollCall.title}點名 (3/3)，關閉${rollCall.title}點名`)
       } else {
-        message.reply(`投票：結束${rollCall.title}點名 (${rollCall.votesForCloseRoll}/3)`)
+        ctx.reply(`投票：結束${rollCall.title}點名 (${rollCall.votesForCloseRoll}/3)`)
       }
     }
   }

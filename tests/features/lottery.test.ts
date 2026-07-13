@@ -96,8 +96,8 @@ describe('Lottery Feature Tests', () => {
     } as any
     processLotteryCommands(listMsg)
 
-    expect(mockChannel.send).toHaveBeenCalled()
-    const callArgs = mockChannel.send.mock.calls[0][0]
+    expect(listMsg.reply).toHaveBeenCalled()
+    const callArgs = (listMsg.reply as any).mock.calls[0][0]
     expect(callArgs.embeds).toBeDefined()
     expect(callArgs.embeds[0].data.title).toBe('禮物 抽獎清單以及說明')
   })
@@ -155,7 +155,7 @@ describe('Lottery Feature Tests', () => {
     processLotteryCommands(drawMsgAfter)
 
     expect(mockChannel.send).toHaveBeenCalledWith('洗牌中...等我一下喔 >u<')
-    expect(mockChannel.send).toHaveBeenCalledWith(
+    expect(mockReply).toHaveBeenCalledWith(
       expect.objectContaining({
         embeds: expect.arrayContaining([
           expect.objectContaining({

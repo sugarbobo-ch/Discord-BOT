@@ -1,9 +1,10 @@
-import { Message, MessageType } from 'discord.js'
+import { Message, MessageType, ChatInputCommandInteraction } from 'discord.js'
 import { Command } from './command.interface'
 import { chatWithBobo, getHybridContext, updateMemoryInBackground } from '../utils/gemini'
 import auth from '../../config/auth.json'
 import axios from 'axios'
 import { BOBO_DIALOGUE_SIGNATURE } from '../features/message'
+import { CommandContext } from '../utils/context'
 
 
 /**
@@ -189,25 +190,86 @@ const safeEdit = async (
   return await safeReply(originalMsg, content)
 }
 
+const safeReplyContext = async (ctx: CommandContext, content: any): Promise<any> => {
+  if (ctx.isInteraction) {
+    if (ctx.interaction!.replied || ctx.interaction!.deferred) {
+      return await ctx.interaction!.followUp(content)
+    }
+    return await ctx.interaction!.reply(content)
+  } else {
+    return await safeReply(ctx.message!, content)
+  }
+}
+
+const safeEditContext = async (
+  statusMsg: any,
+  ctx: CommandContext,
+  content: any
+): Promise<any> => {
+  if (ctx.isInteraction) {
+    return await ctx.interaction!.editReply(content)
+  } else {
+    return await safeEdit(statusMsg, ctx.message!, content)
+  }
+}
+
 export class BoboCommand implements Command {
   public names = ['bobo']
 
+  public slashData = {
+    name: 'bobo',
+    description: '與 AI 助理波波進行對話（支援上傳圖片）',
+    options: [
+      {
+        name: '對話內容',
+        type: 3, // String
+        description: '輸入您想對波波說的話',
+        required: false
+      },
+      {
+        name: '圖片',
+        type: 11, // Attachment
+        description: '上傳一張圖片讓波波解讀',
+        required: false
+      }
+    ]
+  }
+
   public async execute(message: Message, args: string[]): Promise<void> {
-    const guildName = message.guild ? message.guild.name : '私訊 (DM)'
-    const guildId = message.guildId || 'DM'
-    const channelName = 'name' in message.channel ? (message.channel as any).name : 'DM'
-    const channelId = message.channelId
+    const ctx = new CommandContext(message)
+    const prompt = args.join(' ')
+    const attachment = message.attachments.first()
+    await this.runBoboChat(ctx, prompt, attachment)
+  }
+
+  public async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const ctx = new CommandContext(interaction)
+    const prompt = interaction.options.getString('對話內容') || ''
+    const attachment = interaction.options.getAttachment('圖片')
+    await this.runBoboChat(ctx, prompt, attachment)
+  }
+
+  private async runBoboChat(
+    ctx: CommandContext,
+    prompt: string,
+    attachment: any
+  ): Promise<void> {
+    const message = ctx.message
+    const interaction = ctx.interaction
+
+    const guildName = ctx.guild ? ctx.guild.name : '私訊 (DM)'
+    const guildId = ctx.guildId || 'DM'
+    const channelName = ctx.channel && 'name' in ctx.channel ? (ctx.channel as any).name : 'DM'
+    const channelId = interaction ? interaction.channelId : message!.channelId
     console.log(
-      `[Command: bobo] Triggered by ${message.author.tag} (${message.author.id}) in Guild: "${guildName}" (${guildId}) | Channel: "#${channelName}" (${channelId})`
+      `[Command: bobo] Triggered by ${ctx.user.tag} (${ctx.user.id}) in Guild: "${guildName}" (${guildId}) | Channel: "#${channelName}" (${channelId})`
     )
 
-    let prompt = args.join(' ')
-    const attachment = message.attachments.first()
     const hasAttachment = attachment && attachment.contentType?.startsWith('image/')
 
     // 1. 獲取被回覆的訊息
     let repliedMsg: Message | null = null
-    if (message.reference && message.reference.messageId) {
+    if (message && message.reference && message.reference.messageId) {
       try {
         repliedMsg = await message.channel.messages.fetch(message.reference.messageId)
       } catch (fetchRefError: any) {
@@ -218,37 +280,40 @@ export class BoboCommand implements Command {
     const repliedMsgImageUrl = repliedMsg ? getMessageImageUrl(repliedMsg) : null
 
     // 2. 處理當前 Prompt 與回覆訊息的關聯
-    if (!prompt && !hasAttachment) {
+    let finalPrompt = prompt
+    if (!finalPrompt && !hasAttachment) {
       if (repliedMsg) {
         if (repliedMsgImageUrl) {
-          prompt = '這張圖片是什麼？請跟我聊聊。'
+          finalPrompt = '這張圖片是什麼？請跟我聊聊。'
         } else {
-          prompt = '請回覆此訊息。'
+          finalPrompt = '請回覆此訊息。'
         }
       } else {
-        await safeReply(message, '叫波波幹嘛？後面要加上你想說的話或提供圖片啦！' + BOBO_DIALOGUE_SIGNATURE)
+        await safeReplyContext(ctx, '叫波波幹嘛？後面要加上你想說的話或提供圖片啦！' + BOBO_DIALOGUE_SIGNATURE)
         return
       }
     }
 
-    if (!prompt && hasAttachment) {
-      prompt = '這張圖片是什麼？請跟我聊聊。'
+    if (!finalPrompt && hasAttachment) {
+      finalPrompt = '這張圖片是什麼？請跟我聊聊。'
     }
 
     let typingInterval: NodeJS.Timeout | undefined
     try {
       // 在等待 AI 回應時顯示「正在輸入...」狀態
-      await (message.channel as any).sendTyping()
-      typingInterval = setInterval(() => {
-        ;(message.channel as any).sendTyping().catch((err: any) => {
-          console.error('Failed to send typing indicator:', err.message)
-        })
-      }, 5000)
+      if (ctx.channel) {
+        await (ctx.channel as any).sendTyping()
+        typingInterval = setInterval(() => {
+          ;(ctx.channel as any).sendTyping().catch((err: any) => {
+            console.error('Failed to send typing indicator:', err.message)
+          })
+        }, 5000)
+      }
 
       // 3. 嘗試下載當前訊息的主圖片內容 (若為回覆訊息含有圖片，以該張圖片為主)
       let image: { buffer: Buffer; mimeType: string; description?: string } | undefined
       let isImageFromRepliedMsg = false
-      const currentSender = message.member?.displayName || message.author.username
+      const currentSender = ctx.member?.displayName || ctx.user.username
 
       // 優先檢查被回覆的訊息是否含有圖片
       if (repliedMsg && repliedMsgImageUrl) {
@@ -292,7 +357,7 @@ export class BoboCommand implements Command {
             image = {
               buffer: Buffer.from(response.data),
               mimeType: attachment.contentType,
-              description: `[發送者: ${currentSender}] 內容: "${prompt}"`
+              description: `[發送者: ${currentSender}] 內容: "${finalPrompt}"`
             }
           } catch (downloadError: any) {
             console.warn('Failed to download attachment:', downloadError.message)
@@ -301,8 +366,8 @@ export class BoboCommand implements Command {
       }
 
       // 若皆無，最後偵測文字中是否含有圖片網址
-      if (!image && prompt) {
-        const urlMatch = prompt.match(/https?:\/\/\S+/i)
+      if (!image && finalPrompt) {
+        const urlMatch = finalPrompt.match(/https?:\/\/\S+/i)
         if (urlMatch) {
           const url = urlMatch[0]
           if (isImageUrl(url)) {
@@ -322,7 +387,7 @@ export class BoboCommand implements Command {
               image = {
                 buffer: Buffer.from(response.data),
                 mimeType,
-                description: `[發送者: ${currentSender}] 內容: "${prompt}"`
+                description: `[發送者: ${currentSender}] 內容: "${finalPrompt}"`
               }
             } catch (urlError: any) {
               console.warn('Failed to download image from URL:', urlError.message)
@@ -335,10 +400,11 @@ export class BoboCommand implements Command {
       let channelHistoryContext = ''
       const historyImagesPayload: { buffer: Buffer; mimeType: string; description?: string }[] = []
 
-      if (message.channel && message.channel.isTextBased()) {
+      const historyTarget = message || interaction
+      if (historyTarget && ctx.channel && ctx.channel.isTextBased()) {
         try {
           // 4. 取得混合式上下文 (包含最近的頻道訊息與顯式回覆鏈)
-          const hybridMsgs = await getHybridContext(message, limit, 5)
+          const hybridMsgs = await getHybridContext(historyTarget, limit, 5)
           const historyMsgs = [...hybridMsgs].reverse() // 轉為 [最新, ..., 最舊] 以配合原先的處理順序與權重計算
 
           const k = historyMsgs.length
@@ -355,7 +421,7 @@ export class BoboCommand implements Command {
               attachment.contentType?.startsWith('image/') &&
               isImageFromRepliedMsg
             ) {
-              imagesToDownload.push({ msgId: message.id, url: attachment.url })
+              imagesToDownload.push({ msgId: historyTarget.id, url: attachment.url })
             }
 
             // 如果有回覆的圖片，且沒有被用作主圖片 (isImageFromRepliedMsg 為 false)，則優先強行放入歷史下載清單
@@ -363,13 +429,13 @@ export class BoboCommand implements Command {
               imagesToDownload.push({ msgId: repliedMsg.id, url: repliedMsgImageUrl })
             }
 
+            const clientUserId = interaction ? interaction.client.user?.id : message!.client.user?.id
+
             for (const msg of historyMsgs) {
               if (imagesToDownload.length >= MAX_HISTORY_IMAGES) break
 
-              // 跳過系統訊息（身分組通知、伺服器加成等），避免讀取無關圖片
               if (isSystemMessage(msg)) continue
 
-              // 避免重複加入回覆訊息的圖片 (不管是當作主圖還是已經當作歷史圖加入)
               if (repliedMsg && msg.id === repliedMsg.id && repliedMsgImageUrl) {
                 continue
               }
@@ -380,7 +446,6 @@ export class BoboCommand implements Command {
               }
             }
 
-            // 依序 [新 -> 舊] 下載以符合最新的那張圖在最前面的順序 (讓最新的歷史圖片標記為 1，較舊的歷史圖片標記為後，符合時序)
             const downloadedHistoryImagesMap = new Map<
               string,
               {
@@ -411,14 +476,13 @@ export class BoboCommand implements Command {
                         ? 'image/gif'
                         : 'image/jpeg'
 
-                // 獲取該圖片對應的訊息內容作為描述
                 const msg =
                   historyMsgs.find(m => m.id === item.msgId) ||
-                  (item.msgId === message.id ? message : null)
+                  (item.msgId === historyTarget.id ? historyTarget : null) as Message | null
                 let description = ''
                 if (msg) {
                   const author = msg.member?.displayName || msg.author.username
-                  const sender = msg.author.id === message.client.user?.id ? '波波' : author
+                  const sender = msg.author.id === clientUserId ? '波波' : author
                   description = `[發送者: ${sender}] 內容: "${msg.content || ''}"`
                 }
 
@@ -438,7 +502,6 @@ export class BoboCommand implements Command {
               } catch (downloadError: any) {
                 const status = downloadError.response?.status
                 if (status === 404 || status === 403) {
-                  // Discord CDN 連結失效或已被刪除，此為預期現象，使用 info 記錄以保持 log 清潔
                   console.info(
                     `History image from ${item.url} is no longer accessible (HTTP ${status}).`
                   )
@@ -452,7 +515,7 @@ export class BoboCommand implements Command {
             }
 
             // 3. 組合歷史文字 context (包含當前訊息作為最上方最新的一筆，權重為 1.00)
-            let currentProcessedContent = prompt
+            let currentProcessedContent = finalPrompt
             if (isImageFromRepliedMsg && repliedMsgImageUrl) {
               const repliedSender = repliedMsg!.member?.displayName || repliedMsg!.author.username
               currentProcessedContent =
@@ -471,12 +534,11 @@ export class BoboCommand implements Command {
             }
 
             const historyEntries = historyMsgs
-              .filter((msg: Message) => !isSystemMessage(msg)) // 過濾掉系統訊息（身分組通知等）
+              .filter((msg: Message) => !isSystemMessage(msg))
               .map((msg: Message, i) => {
                 const msgTimeSeconds = Math.floor(msg.createdTimestamp / 1000)
                 const secondsAgo = nowSeconds - msgTimeSeconds
 
-                // 計算權重：回覆訊息權重強行設為 1.00。其他歷史訊息則依位置與時間衰減，最大上限為 0.90
                 let weight = '0.90'
                 const isRepliedMessage = msg.id === repliedMsg?.id
                 if (isRepliedMessage) {
@@ -489,11 +551,10 @@ export class BoboCommand implements Command {
                 }
 
                 const authorName = msg.member?.displayName || msg.author.username
-                const sender = msg.author.id === message.client.user?.id ? '波波' : authorName
+                const sender = msg.author.id === clientUserId ? '波波' : authorName
 
                 let processedContent = msg.content
 
-                // 優先使用已下載的標記
                 const downloadedImg = downloadedHistoryImagesMap.get(msg.id)
                 if (downloadedImg) {
                   const imgLabel = isRepliedMessage
@@ -503,14 +564,13 @@ export class BoboCommand implements Command {
                     `[${imgLabel} (由 ${sender} 分享，URL: ${downloadedImg.url})] ${processedContent}`.trim()
                 }
 
-                // 處理所有附件 (圖片與影片)
                 const mediaAttachmentsInfo: string[] = []
                 msg.attachments.forEach(att => {
                   const isImage = att.contentType?.startsWith('image/')
                   const isVideo = att.contentType?.startsWith('video/')
                   if (isImage) {
                     if (downloadedImg && downloadedImg.url === att.url) {
-                      return // 已被 downloadedImg 包含，不重複處理
+                      return
                     }
                     mediaAttachmentsInfo.push(`[圖片附件 (由 ${sender} 上傳): ${att.url}]`)
                   } else if (isVideo) {
@@ -518,13 +578,12 @@ export class BoboCommand implements Command {
                   }
                 })
 
-                // 處理 Embed 圖片（連結預覽圖、K線圖等）
                 if (msg.embeds && msg.embeds.length > 0) {
                   for (const embed of msg.embeds) {
                     const embedImageUrl = embed.image?.url || embed.thumbnail?.url
                     if (embedImageUrl && !isRoleIconUrl(embedImageUrl)) {
                       if (downloadedImg && downloadedImg.url === embedImageUrl) {
-                        continue // 已被 downloadedImg 包含，不重複處理
+                        continue
                       }
                       mediaAttachmentsInfo.push(
                         `[Embed 圖片 (由 ${sender} 分享): ${embedImageUrl}]`
@@ -533,13 +592,12 @@ export class BoboCommand implements Command {
                   }
                 }
 
-                // 處理內文中的 URL
                 const urlMatch = msg.content.match(/https?:\/\/\S+/gi)
                 if (urlMatch) {
                   urlMatch.forEach(url => {
                     if (isImageUrl(url)) {
                       if (downloadedImg && downloadedImg.url === url) {
-                        return // 已被 downloadedImg 包含，不重複處理
+                        return
                       }
                       processedContent = processedContent.replace(
                         url,
@@ -554,7 +612,6 @@ export class BoboCommand implements Command {
                   })
                 }
 
-                // 若有其他媒體附件，附加在內文後面
                 if (mediaAttachmentsInfo.length > 0) {
                   processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
                 }
@@ -571,25 +628,26 @@ export class BoboCommand implements Command {
       }
 
       let statusMessage: any = null
+      const currentAuthorName = ctx.member?.displayName || ctx.user.username
 
-      const currentAuthorName = message.member?.displayName || message.author.username
       const reply = await chatWithBobo(
-        prompt,
-        message.author.id,
+        finalPrompt,
+        ctx.user.id,
         channelHistoryContext,
         image,
         historyImagesPayload,
         async statusText => {
           try {
             if (!statusMessage) {
-              statusMessage = await safeReply(message, statusText)
+              statusMessage = await safeReplyContext(ctx, statusText)
             } else {
-              statusMessage = await safeEdit(statusMessage, message, statusText)
+              statusMessage = await safeEditContext(statusMessage, ctx, statusText)
             }
-            // 編輯狀態訊息後重新觸發「正在輸入...」狀態，確保指示器在後續查詢中持續保有
-            await (message.channel as any).sendTyping().catch((err: any) => {
-              console.error('Failed to send typing indicator after status update:', err.message)
-            })
+            if (ctx.channel) {
+              await (ctx.channel as any).sendTyping().catch((err: any) => {
+                console.error('Failed to send typing indicator after status update:', err.message)
+              })
+            }
           } catch (msgErr: any) {
             console.error('Failed to send status update in Discord:', msgErr.message)
           }
@@ -597,11 +655,10 @@ export class BoboCommand implements Command {
         currentAuthorName
       )
 
-      // 5. 異步更新長期記憶
       updateMemoryInBackground(
-        message.author.id,
+        ctx.user.id,
         currentAuthorName,
-        prompt,
+        finalPrompt,
         reply
       ).catch(err => {
         console.error('[Memory Update Background Error]:', err)
@@ -609,12 +666,11 @@ export class BoboCommand implements Command {
 
       const signedReply = reply + BOBO_DIALOGUE_SIGNATURE
 
-      // Discord 訊息長度上限為 2000 字，在此進行切分以避免 API 報錯
       if (signedReply.length <= 2000) {
         if (statusMessage) {
-          await safeEdit(statusMessage, message, signedReply)
+          await safeEditContext(statusMessage, ctx, signedReply)
         } else {
-          await safeReply(message, signedReply)
+          await safeReplyContext(ctx, signedReply)
         }
       } else {
         const CHUNK_SIZE = 1900
@@ -626,13 +682,14 @@ export class BoboCommand implements Command {
         if (chunks.length > 0) {
           let firstMsg: any
           if (statusMessage) {
-            firstMsg = await safeEdit(statusMessage, message, chunks[0])
+            firstMsg = await safeEditContext(statusMessage, ctx, chunks[0])
           } else {
-            firstMsg = await safeReply(message, chunks[0])
+            firstMsg = await safeReplyContext(ctx, chunks[0])
           }
-          if (firstMsg) {
+          const replyTarget = (firstMsg && 'channel' in firstMsg) ? firstMsg : ctx.channel
+          if (replyTarget) {
             for (let i = 1; i < chunks.length; i++) {
-              await (firstMsg.channel as any).send(chunks[i]).catch((err: any) => {
+              await (replyTarget as any).send(chunks[i]).catch((err: any) => {
                 console.error(`Failed to send chunk ${i}:`, err.message)
               })
             }
@@ -641,17 +698,18 @@ export class BoboCommand implements Command {
       }
     } catch (error: any) {
       console.error('Error in BoboCommand:', error.message)
-      await safeReply(message, '波波出錯了，無法回應。')
+      await safeReplyContext(ctx, '波波出錯了，無法回應。')
     } finally {
       if (typingInterval) {
         clearInterval(typingInterval)
       }
-      // 強制結束 Discord 的正在輸入狀態 (透過發送並立即刪除隱形訊息)
-      try {
-        const dummy = await (message.channel as any).send({ content: '\u200B' })
-        await dummy.delete().catch(() => {})
-      } catch {
-        // 忽略可能存在的發言權限或刪除權限錯誤
+      if (ctx.channel) {
+        try {
+          const dummy = await (ctx.channel as any).send({ content: '\u200B' })
+          await dummy.delete().catch(() => {})
+        } catch {
+          // Ignore permissions errors
+        }
       }
     }
   }

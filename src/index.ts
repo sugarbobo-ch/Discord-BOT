@@ -19,9 +19,11 @@ import { SettingCommand } from './commands/setting'
 import { FeatureCommand } from './commands/feature'
 import { StockCommand } from './commands/stock'
 import { MemoryCommand } from './commands/memory'
+import { AutoModCommand } from './commands/automod'
 import { roastTypo, shouldSkipTypoCheck, isStrictLocalTypoCheck } from './utils/gemini'
 import { checkAndFixTwitterEmbed } from './features/twitter'
 import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
+import { handleAutoMod } from './features/automod'
 
 let count = 0
 
@@ -59,6 +61,7 @@ client.on('ready', async () => {
   commandRegistry.register(new FeatureCommand())
   commandRegistry.register(new StockCommand())
   commandRegistry.register(new MemoryCommand())
+  commandRegistry.register(new AutoModCommand())
 
   // 註冊 Discord 斜線指令 (Slash Commands)
   try {
@@ -86,6 +89,12 @@ client.login(auth.token)
 
 client.on('messageCreate', async (message: Message) => {
   if (message.author.bot || message.author.id === client.user?.id) {
+    return
+  }
+
+  // 執行 AutoMod 偵測防護
+  const isAutomodActionTaken = await handleAutoMod(message)
+  if (isAutomodActionTaken) {
     return
   }
 

@@ -45,6 +45,13 @@ export function getDb(): any {
       updated_at INTEGER,
       memory_enabled INTEGER DEFAULT 1
     );
+
+    CREATE TABLE IF NOT EXISTS forbidden_words (
+      server_id TEXT NOT NULL,
+      word TEXT NOT NULL,
+      PRIMARY KEY (server_id, word),
+      FOREIGN KEY (server_id) REFERENCES servers(server_id) ON DELETE CASCADE
+    );
   `)
 
   // 執行 Schema 遷移 (如果欄位不存在則新增)
@@ -195,6 +202,50 @@ export function setUserMemorySetting(userId: string, enable: boolean): void {
     `).run(userId, val)
   } catch (error) {
     console.error('Error setting user memory setting:', error)
+  }
+}
+
+/**
+ * 新增禁用詞語
+ */
+export function addForbiddenWord(serverId: string, word: string): void {
+  const db = getDb()
+  try {
+    db.prepare('INSERT OR IGNORE INTO servers (server_id) VALUES (?)').run(serverId)
+    db.prepare('INSERT OR IGNORE INTO forbidden_words (server_id, word) VALUES (?, ?)').run(
+      serverId,
+      word
+    )
+  } catch (error) {
+    console.error('Error adding forbidden word:', error)
+  }
+}
+
+/**
+ * 移除禁用詞語
+ */
+export function removeForbiddenWord(serverId: string, word: string): void {
+  const db = getDb()
+  try {
+    db.prepare('DELETE FROM forbidden_words WHERE server_id = ? AND word = ?').run(serverId, word)
+  } catch (error) {
+    console.error('Error removing forbidden word:', error)
+  }
+}
+
+/**
+ * 取得所有禁用詞語
+ */
+export function getForbiddenWords(serverId: string): string[] {
+  const db = getDb()
+  try {
+    const rows = db
+      .prepare('SELECT word FROM forbidden_words WHERE server_id = ?')
+      .all(serverId) as { word: string }[]
+    return rows.map(r => r.word)
+  } catch (error) {
+    console.error('Error fetching forbidden words:', error)
+    return []
   }
 }
 

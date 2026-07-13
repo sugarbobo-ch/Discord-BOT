@@ -15,6 +15,7 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
   let mockChannel: any
   let mockReply: any
   let nsfwCommand: NsfwCommand
+  let mockStatusMsg: any
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -23,17 +24,18 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
       toJSON: () => meta
     }) as any)
 
+    mockStatusMsg = {
+      edit: vi.fn().mockResolvedValue({})
+    }
+
     mockChannel = {
       isTextBased: vi.fn().mockReturnValue(true),
       send: vi.fn().mockImplementation(async (options) => {
-        // Return a mock message that can be edited
-        return {
-          edit: vi.fn()
-        }
+        return mockStatusMsg
       }),
       nsfw: true
     }
-    mockReply = vi.fn()
+    mockReply = vi.fn().mockResolvedValue(mockStatusMsg)
     nsfwCommand = new NsfwCommand()
   })
 
@@ -90,7 +92,7 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
     } as any
 
     await nsfwCommand.execute(msg, ['12345'])
-    expect(mockChannel.send).toHaveBeenCalledWith('請至開車頻道使用此指令')
+    expect(mockReply).toHaveBeenCalledWith('請至開車頻道使用此指令')
   })
 
   test('should send raw URL in non-NSFW channel for nhentai/god commands', async () => {
@@ -102,7 +104,7 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
     } as any
 
     await nsfwCommand.execute(msg, ['177013'])
-    expect(mockChannel.send).toHaveBeenCalledWith('https://nhentai.net/g/177013/')
+    expect(mockReply).toHaveBeenCalledWith('https://nhentai.net/g/177013/')
   })
 
   test('should send pixiv embed in NSFW channel', async () => {
@@ -113,7 +115,7 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
     } as any
 
     await nsfwCommand.execute(msg, ['12345'])
-    expect(mockChannel.send).toHaveBeenCalledWith(
+    expect(mockReply).toHaveBeenCalledWith(
       expect.objectContaining({
         embeds: expect.arrayContaining([
           expect.objectContaining({
@@ -146,9 +148,6 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
       reply: mockReply
     } as any
 
-    const mockStatusMsg = { edit: vi.fn() }
-    mockChannel.send.mockResolvedValueOnce(mockStatusMsg)
-
     await nsfwCommand.execute(msg, ['301531'])
 
     expect(fetchWnacgMetadata).toHaveBeenCalledWith('https://www.wnacg.com/photos-index-aid-301531.html')
@@ -176,15 +175,49 @@ describe('NsfwCommand Format Validation and Execution Tests', () => {
       reply: mockReply
     } as any
 
-    const mockStatusMsg = { edit: vi.fn() }
-    mockChannel.send.mockResolvedValueOnce(mockStatusMsg)
-
     await nsfwCommand.execute(msg, ['177013'])
 
     expect(fetchNhentaiMetadata).toHaveBeenCalledWith('177013')
     expect(mockStatusMsg.edit).toHaveBeenCalledWith({
       content: '',
       embeds: [expect.objectContaining({ data: mockMeta })]
+    })
+  })
+
+  describe('executeSlash (slash commands)', () => {
+    let mockInteraction: any
+
+    beforeEach(() => {
+      mockInteraction = {
+        commandName: '',
+        options: {
+          getString: vi.fn(),
+          getAttachment: vi.fn()
+        },
+        channel: mockChannel,
+        reply: mockReply,
+        editReply: vi.fn()
+      } as any
+    })
+
+    test('should execute pixiv slash command successfully', async () => {
+      mockInteraction.commandName = 'pixiv'
+      mockInteraction.options.getString.mockReturnValue('12345')
+
+      await nsfwCommand.executeSlash(mockInteraction)
+
+      expect(mockInteraction.options.getString).toHaveBeenCalledWith('作品id', true)
+      expect(mockReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          embeds: expect.arrayContaining([
+            expect.objectContaining({
+              data: expect.objectContaining({
+                title: 'Pixiv 作品 - 12345'
+              })
+            })
+          ])
+        })
+      )
     })
   })
 })

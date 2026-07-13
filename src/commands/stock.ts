@@ -1,4 +1,4 @@
-import { Message, EmbedBuilder, AttachmentBuilder } from 'discord.js'
+import { Message, EmbedBuilder, AttachmentBuilder, ChatInputCommandInteraction } from 'discord.js'
 import { Command } from './command.interface'
 import {
   getStockPrice,
@@ -13,6 +13,7 @@ import {
 } from '../utils/stock'
 import { searchStockTickerWithAI, getChineseNameWithAI } from '../utils/gemini'
 import axios from 'axios'
+import { CommandContext } from '../utils/context'
 
 function formatValue(val: any, isPercent = false): string {
   if (val === undefined || val === null) return '--'
@@ -25,6 +26,19 @@ function formatValue(val: any, isPercent = false): string {
 
 export class StockCommand implements Command {
   public names = ['stock']
+
+  public slashData = {
+    name: 'stock',
+    description: '查詢最新股價及近30天走勢K線圖',
+    options: [
+      {
+        name: '代碼或名稱',
+        type: 3, // String
+        description: '股票代號或名稱，例如 2330、美光、AAPL',
+        required: true
+      }
+    ]
+  }
 
   public async execute(message: Message, args: string[]): Promise<void> {
     if (args.length === 0) {
@@ -42,11 +56,22 @@ export class StockCommand implements Command {
       return
     }
 
+    const ctx = new CommandContext(message)
+    await this.searchStock(ctx, query)
+  }
+
+  public async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const query = interaction.options.getString('代碼或名稱', true).trim()
+    const ctx = new CommandContext(interaction)
+    await this.searchStock(ctx, query)
+  }
+
+  private async searchStock(ctx: CommandContext, query: string): Promise<void> {
     let targetTicker = query
-    let statusMessage: Message | null = null
+    let statusMessage: any = null
     let yahooMatchedName: string | null = null
 
-    // 1. Try resolving using lookupStockTicker first (checks NICKNAME_MAP, COMMON_STOCK_MAP, and taiwanStockMap)
+    // 1. Try resolving using lookupStockTicker first
     const resolved = await lookupStockTicker(query)
     if (resolved) {
       targetTicker = resolved
@@ -55,7 +80,12 @@ export class StockCommand implements Command {
 
       if (!isDirectTicker) {
         try {
-          statusMessage = await message.reply(`🔍 正在搜尋「${query}」的股票代碼...`)
+          if (ctx.isInteraction) {
+            await ctx.reply(`🔍 正在搜尋「${query}」的股票代碼...`)
+            statusMessage = ctx.interaction
+          } else {
+            statusMessage = await ctx.message!.reply(`🔍 正在搜尋「${query}」的股票代碼...`)
+          }
         } catch (err) {
           console.error('Failed to send status reply message:', err)
         }
@@ -72,9 +102,13 @@ export class StockCommand implements Command {
         if (!resolvedAI) {
           const errorText = `❌ 找不到與「${query}」相關的股票代碼。請嘗試輸入更精確的名稱或直接輸入代號（例如 \`2330\` 或 \`AAPL\`）。`
           if (statusMessage) {
-            await statusMessage.edit(errorText)
+            if (ctx.isInteraction) {
+              await ctx.editReply(errorText)
+            } else {
+              await statusMessage.edit(errorText)
+            }
           } else {
-            await message.reply(errorText)
+            await ctx.reply(errorText)
           }
           return
         }
@@ -88,9 +122,13 @@ export class StockCommand implements Command {
       if (result.error) {
         const errorText = `❌ 查詢股票「${targetTicker}」時發生錯誤：${result.error}`
         if (statusMessage) {
-          await statusMessage.edit(errorText)
+          if (ctx.isInteraction) {
+            await ctx.editReply(errorText)
+          } else {
+            await statusMessage.edit(errorText)
+          }
         } else {
-          await message.reply(errorText)
+          await ctx.reply(errorText)
         }
         return
       }
@@ -211,14 +249,26 @@ export class StockCommand implements Command {
       const content = slogan ? `📣 **${slogan}**` : undefined
 
       let finalMsg: Message
-      if (statusMessage) {
-        await statusMessage.edit({
-          content: content || `✅ 已找到「${query}」的代碼為 \`${targetTicker}\`：`,
-          embeds: [embed]
-        })
-        finalMsg = statusMessage as Message
+      if (ctx.isInteraction) {
+        if (statusMessage) {
+          await ctx.editReply({
+            content: content || `✅ 已找到「${query}」的代碼為 \`${targetTicker}\`：`,
+            embeds: [embed]
+          })
+        } else {
+          await ctx.reply({ content, embeds: [embed] })
+        }
+        finalMsg = (await ctx.interaction!.fetchReply()) as Message
       } else {
-        finalMsg = (await message.reply({ content, embeds: [embed] })) as Message
+        if (statusMessage) {
+          await statusMessage.edit({
+            content: content || `✅ 已找到「${query}」的代碼為 \`${targetTicker}\`：`,
+            embeds: [embed]
+          })
+          finalMsg = statusMessage as Message
+        } else {
+          finalMsg = (await ctx.message!.reply({ content, embeds: [embed] })) as Message
+        }
       }
 
       // 背景非同步取得 52 週指標及繪製 K 線圖
@@ -393,9 +443,13 @@ export class StockCommand implements Command {
       console.error(`Error querying stock price for ${targetTicker}:`, error)
       const errorText = `❌ 查詢股票「${targetTicker}」時發生未預期的錯誤。`
       if (statusMessage) {
-        await statusMessage.edit(errorText)
+        if (ctx.isInteraction) {
+          await ctx.editReply(errorText)
+        } else {
+          await statusMessage.edit(errorText)
+        }
       } else {
-        await message.reply(errorText)
+        await ctx.reply(errorText)
       }
     }
   }

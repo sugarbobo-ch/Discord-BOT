@@ -379,4 +379,45 @@ describe('StockCommand Tests', () => {
     const embed = mockMessage.reply.mock.calls[0][0].embeds[0]
     expect(embed.data.title).toContain('台光電 / Elite Material Co., Ltd.')
   })
+
+  describe('executeSlash (slash commands)', () => {
+    let mockInteraction: any
+
+    beforeEach(() => {
+      mockInteraction = {
+        commandName: 'stock',
+        options: {
+          getString: vi.fn().mockReturnValue('2330')
+        },
+        reply: vi.fn().mockResolvedValue(mockStatusMessage),
+        editReply: vi.fn().mockResolvedValue(true),
+        interaction: {},
+        isInteraction: true
+      } as any
+      mockInteraction.fetchReply = vi.fn().mockResolvedValue({
+        edit: vi.fn(),
+        reply: vi.fn(),
+        channel: {
+          send: vi.fn()
+        }
+      })
+    })
+
+    test('should query stock code via slash command successfully', async () => {
+      const quoteSpy = vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValue({
+        regularMarketPrice: 600,
+        currency: 'TWD',
+        displayName: '台積電',
+        regularMarketChange: 10,
+        regularMarketChangePercent: 1.69,
+        fiftyTwoWeekLow: 500,
+        fiftyTwoWeekHigh: 650
+      } as any)
+
+      await stockCommand.executeSlash(mockInteraction)
+
+      expect(mockInteraction.options.getString).toHaveBeenCalledWith('代碼或名稱', true)
+      expect(quoteSpy).toHaveBeenCalledWith('2330.TW')
+    })
+  })
 })

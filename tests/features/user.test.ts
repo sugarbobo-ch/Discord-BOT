@@ -62,10 +62,11 @@ describe('User Feature Tests', () => {
       reply: mockReply
     } as any
 
+    mockReply.mockClear()
     getKeepsList(mockListMsg)
 
-    expect(mockChannel.send).toHaveBeenCalled()
-    const callArgs = mockChannel.send.mock.calls[0][0]
+    expect(mockReply).toHaveBeenCalled()
+    const callArgs = mockReply.mock.calls[0][0]
     expect(callArgs.embeds).toBeDefined()
     const embed: EmbedBuilder = callArgs.embeds[0]
 
@@ -89,6 +90,6 @@ describe('User Feature Tests', () => {
     } as any
 
     getKeepsList(mockMsg)
-    expect(mockChannel.send).toHaveBeenCalledWith('尚未儲存任何訊息')
+    expect(mockMsg.reply).toHaveBeenCalledWith('尚未儲存任何訊息')
   })
 })

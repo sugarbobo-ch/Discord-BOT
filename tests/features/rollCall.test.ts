@@ -77,8 +77,8 @@ describe('RollCall Feature Tests', () => {
     } as any
     getRollCallCommand(listMsg)
 
-    expect(mockChannel.send).toHaveBeenCalled()
-    const callArgs = mockChannel.send.mock.calls[0][0]
+    expect(listMsg.reply).toHaveBeenCalled()
+    const callArgs = (listMsg.reply as any).mock.calls[0][0]
     expect(callArgs.embeds).toBeDefined()
     expect(callArgs.embeds[0].data.title).toBe('列表點名 點名清單')
   })
