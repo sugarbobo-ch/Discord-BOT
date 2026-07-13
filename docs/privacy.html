@@ -69,14 +69,16 @@
         <ul>
             <li><strong>Custom Commands</strong>: Custom trigger keywords and their corresponding response text/media URLs defined by server administrators or users.</li>
             <li><strong>User Long-Term Memory</strong>: Personalized facts or preferences that you consent to save (managed via the <code>!記憶</code> / <code>/記憶</code> commands). This is processed using the Mem0 framework and stored locally.</li>
+            <li><strong>AutoMod Settings</strong>: Forbidden keywords configured by server administrators to enforce server rules.</li>
             <li><strong>Server Configuration</strong>: Settings such as enabled features and prefix settings.</li>
         </ul>
 
         <h3>B. Information Processed in Real-Time (In-Memory)</h3>
         <p>The Bot processes the following data temporarily in RAM to respond to events. This data is <strong>not</strong> stored permanently:</p>
         <ul>
-            <li><strong>Message Content</strong>: Read in real-time to match command prefixes, detect typos (for spelling correction roasts), find specific link patterns (for auto-embed fixes), and detect repeated messages (for echo/copypasta features).</li>
-            <li><strong>Channel History</strong>: Up to 50 recent messages are read when you chat with the Bot (<code>!bobo</code> or @mentions) to provide conversational context to the Google Gemini API.</li>
+            <li><strong>Message Content</strong>: Read in real-time to match command prefixes, detect typos (for spelling correction roasts), find specific link patterns (for auto-embed fixes), detect repeated messages (for echo/copypasta features), and scan for forbidden keywords or phishing links for automated moderation (AutoMod).</li>
+            <li><strong>Moderation Spammer Tracking</strong>: User IDs and message IDs of accounts attempting to post suspicious links alongside `@everyone` / `@here` mentions are tracked in-memory for up to 60 seconds to detect cross-channel phishing spam. This is used solely to execute automated bans and clean spam messages.</li>
+            <li><strong>Channel History</strong>: Up to 50 recent messages are read when you chat with the Bot (<code>/bobo</code>, <code>!bobo</code>, or @mentions) to provide conversational context to the Google Gemini API.</li>
         </ul>
 
         <h2>2. Third-Party Data Sharing</h2>
