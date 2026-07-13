@@ -78,11 +78,23 @@ export async function handleAutoMod(message: Message): Promise<boolean> {
   const matchedWord = forbiddenWords.find(word => message.content.includes(word))
 
   if (matchedWord) {
-    const member = message.member
-    // 管理員與擁有管理伺服器權限者豁免
-    if (member && !member.permissions.has(PermissionFlagsBits.Administrator) && !member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+    let member = message.member
+    if (!member && message.guild) {
       try {
-        if (member.moderatable) {
+        member = await message.guild.members.fetch(message.author.id)
+      } catch (err) {
+        console.warn('Failed to fetch guild member for automod check:', err)
+      }
+    }
+
+    const isAdmin = member
+      ? member.permissions.has(PermissionFlagsBits.Administrator) ||
+        member.permissions.has(PermissionFlagsBits.ManageGuild)
+      : false
+
+    if (!isAdmin) {
+      try {
+        if (member && member.moderatable) {
           // 禁言 60 秒
           await member.timeout(60 * 1000, `AutoMod: 使用禁用詞語 "${matchedWord}"`)
           const warning = await message.reply(`❌ 偵測到禁用詞語，您已被禁言 60 秒。`)
@@ -101,9 +113,21 @@ export async function handleAutoMod(message: Message): Promise<boolean> {
   // 2. @everyone / @here + 釣魚連結 + 跨頻道發送檢查
   const mentionsEveryone = message.mentions.everyone || message.content.includes('@everyone') || message.content.includes('@here')
   if (mentionsEveryone && isSuspiciousLink(message.content)) {
-    const member = message.member
-    // 管理員與擁有管理伺服器權限者豁免
-    if (member && !member.permissions.has(PermissionFlagsBits.Administrator) && !member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+    let member = message.member
+    if (!member && message.guild) {
+      try {
+        member = await message.guild.members.fetch(message.author.id)
+      } catch (err) {
+        console.warn('Failed to fetch guild member for phishing check:', err)
+      }
+    }
+
+    const isAdmin = member
+      ? member.permissions.has(PermissionFlagsBits.Administrator) ||
+        member.permissions.has(PermissionFlagsBits.ManageGuild)
+      : false
+
+    if (!isAdmin) {
       const userId = message.author.id
       const channelId = message.channel.id
       const now = Date.now()
@@ -119,7 +143,7 @@ export async function handleAutoMod(message: Message): Promise<boolean> {
       const distinctChannels = new Set(record.posts.map(p => p.channelId))
       if (distinctChannels.size >= 2) {
         try {
-          if (member.bannable) {
+          if (member && member.bannable) {
             // 封鎖用戶
             await member.ban({ reason: 'AutoMod: 短時間內跨頻道發送 @everyone 釣魚連結' })
             await (message.channel as any).send(`🚨 用戶 ${message.author.tag} 因短時間內跨頻道發送 @everyone 釣魚連結，已被系統封鎖 (Ban)。`)
