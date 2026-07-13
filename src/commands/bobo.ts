@@ -404,7 +404,7 @@ export class BoboCommand implements Command {
       if (historyTarget && ctx.channel && ctx.channel.isTextBased()) {
         try {
           // 4. 取得混合式上下文 (包含最近的頻道訊息與顯式回覆鏈)
-          const hybridMsgs = await getHybridContext(historyTarget, limit, 5)
+          const hybridMsgs = await getHybridContext(historyTarget as any, limit, 5)
           const historyMsgs = [...hybridMsgs].reverse() // 轉為 [最新, ..., 最舊] 以配合原先的處理順序與權重計算
 
           const k = historyMsgs.length

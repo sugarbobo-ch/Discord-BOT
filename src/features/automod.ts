@@ -122,7 +122,7 @@ export async function handleAutoMod(message: Message): Promise<boolean> {
           if (member.bannable) {
             // 封鎖用戶
             await member.ban({ reason: 'AutoMod: 短時間內跨頻道發送 @everyone 釣魚連結' })
-            await message.channel.send(`🚨 用戶 ${message.author.tag} 因短時間內跨頻道發送 @everyone 釣魚連結，已被系統封鎖 (Ban)。`)
+            await (message.channel as any).send(`🚨 用戶 ${message.author.tag} 因短時間內跨頻道發送 @everyone 釣魚連結，已被系統封鎖 (Ban)。`)
 
             // 刪除所有記錄到的該用戶的垃圾釣魚訊息
             for (const post of record.posts) {
