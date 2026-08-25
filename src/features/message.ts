@@ -628,7 +628,7 @@ export const BOBO_DIALOGUE_SIGNATURE = '\u200B\u200C'
  */
 export const shouldSkipDialogueTrigger = (message: Message, repliedMsg: Message | null): boolean => {
   // 1. 偵測使用者當前訊息或被回覆的訊息是否包含 fixvx 相關的網址
-  const fixvxRegex = /fixvx\.com|vxtwitter\.com|fxtwitter\.com/i
+  const fixvxRegex = /fixvx\.com|vxtwitter\.com|fxtwitter\.com|fixupx\.com/i
   if (fixvxRegex.test(message.content)) {
     return true
   }

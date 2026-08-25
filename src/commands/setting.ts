@@ -17,7 +17,7 @@ export class SettingCommand implements Command {
 
   public slashData = {
     name: '設定',
-    description: '設定機器人功能 (例如 x.com 置換、NSFW 本子自動預覽與連結跳轉)'
+    description: '設定機器人功能 (例如 x.com / Twitter 置換、NSFW 本子自動預覽與連結跳轉)'
   }
 
   public buttonIds = ['settings_twitter_toggle', 'settings_nsfw_toggle']
@@ -32,8 +32,8 @@ export class SettingCommand implements Command {
       .setColor(0x5865f2) // Discord Blurple
       .addFields(
         {
-          name: '1️⃣ 偵測 x.com 自動置換',
-          value: `目前狀態：${isTwitterEnabled ? '🟢 **已開啟**' : '🔴 **已關閉**'}\n*偵測推特連結並自動置換為 fixvx.com 以便在 Discord 內正常預覽。*`,
+          name: '1️⃣ 偵測 x.com / twitter.com 自動置換',
+          value: `目前狀態：${isTwitterEnabled ? '🟢 **已開啟**' : '🔴 **已關閉**'}\n*偵測推特連結並自動置換為 fixupx.com / fxtwitter.com 以便在 Discord 內正常預覽圖片與影片。*`,
           inline: false
         },
         {

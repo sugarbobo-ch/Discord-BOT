@@ -94,7 +94,7 @@ export class FeatureCommand implements Command {
         {
           name: '🔧 推特/X.com 自動置換與設定',
           value:
-            '• 自動偵測 `x.com` 連結，置換為 `fixvx.com` 以修復預覽。\n' +
+            '• 自動偵測 `x.com` / `twitter.com` 連結，置換為 `fixupx.com` / `fxtwitter.com` 以修復預覽。\n' +
             '• `/設定` / `/setting`：開啟/關閉推特自動置換功能（管理員專用）。\n' +
             '• `/功能` / `/features` / `/help`：顯示本功能介紹與指令列表。'
         },

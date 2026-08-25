@@ -189,7 +189,7 @@ client.on('messageCreate', async (message: Message) => {
       }
     }
 
-    // 偵測 x.com 若沒有產生 embed 則改為 fixvx.com 發送至同頻道
+    // 偵測 x.com / twitter.com 若沒有產生完整預覽 embed 則自動置換為修復網域 (fixupx.com / fxtwitter.com) 發送至同頻道
     checkAndFixTwitterEmbed(message)
 
     // 偵測 R18 網站連結並自動加入 Embed 縮圖與資訊
