@@ -63,11 +63,14 @@ Use `!` or `！` as the command prefix.
    - **18Comic 禁漫天堂** (automatically cycles mirror domains to bypass DNS blocks)
    - **Happymh 嗨皮漫畫** (bypasses 403 Forbidden blocks using a Google Translate proxy)
 7. **Gemini AI Chat (`!bobo`)**: Driven by Google's `gemma-4-31b-it` model. Supports multimodal input (images + text), channel-based chat history context memory (time-decay weighted), automatic LaTeX formula formatting to plain Markdown, user context separation, and safety filters.
-8. **Gemini Key Rotation**: Automatically cycles between multiple Gemini API keys. In case of `429 Resource Exhausted`, `403`, or `401` errors, the key goes on a 5-minute cooldown and falls back to other available keys.
-9. **Real-time Stock Analysis**: Integrates `yahoo-finance2`.
+8. **Gemini Key Rotation**: Automatically cycles between multiple Gemini API keys. In case of `429 Resource Exhausted`, `403`, or `401` errors, the key goes on cooldown and falls back to other available keys. Mem0 background writes honor the provider's retry delay and are throttled through a single-worker queue.
+9. **Mem0 Background Write Status**: Automatic memory extraction is queued with explicit success, no-memory, rate-limit, and permanent-failure tracking. Server administrators can inspect it with `!記憶 狀態` or `/記憶 狀態`.
+10. **Real-time Stock Analysis**: Integrates `yahoo-finance2`.
    - **AI Integration**: When a user mentions a stock ticker (e.g. `2330.TW`, `AAPL`) or common nicknames (e.g. `發哥`, `西瓜`, `公公`) in AI chat, real-time market metrics are queried and injected into Gemini's system instructions. The AI switches to an investment analyst persona.
    - **Direct Query Command**: Use `!stock [ticker/name]` (e.g., `!stock 2330`, `!stock 美光`, `!stock 華通`) to directly fetch the current price, percentage change, day high/low, volume, and automatic K-line chart (last 30 days) from Yahoo Finance.
-10. **NSFW Image Check via Gemini**: In non-NSFW channels, `!addimg` automatically triggers a Gemini Multimodal safety check. NSFW images are rejected and deleted automatically.
-11. **AI Typo Roast**: Detects common typos (`"因該"`, `"以經"`, `"部會"`, `"絕得"`, `"在一次"`) and uses Gemini to roast the user in a humorous way.
-12. **Auto-fix Twitter/X.com links**: Replaces `x.com` links with `fixvx.com` if Discord fails to generate an embed preview within 3 seconds. Can be enabled/disabled per-server via the `!設定` command or `/設定` slash command.
-13. **Features Guide Command**: Use `!功能` / `!features` or the `/功能` slash command to display a beautifully structured list of all available features and commands.
+11. **NSFW Image Check via Gemini**: In non-NSFW channels, `!addimg` automatically triggers a Gemini Multimodal safety check. NSFW images are rejected and deleted automatically.
+12. **AI Typo Roast**: Detects common typos (`"因該"`, `"以經"`, `"部會"`, `"絕得"`, `"在一次"`) and uses Gemini to roast the user in a humorous way.
+13. **Auto-fix Twitter/X.com links**: Replaces `x.com` links with `fixvx.com` if Discord fails to generate an embed preview within 3 seconds. Can be enabled/disabled per-server via the `!設定` command or `/設定` slash command.
+14. **Features Guide Command**: Use `!功能` / `!features` or the `/功能` slash command to display a beautifully structured list of all available features and commands.
+
+> **Dependency note:** `mem0ai 3.1.7` currently declares an optional `@google/genai ^1.40.0` peer range, while this bot intentionally remains on `@google/genai 2.7.0`. The repository `.npmrc` enables legacy peer resolution; runtime compatibility is covered by the Mem0 reliability tests.

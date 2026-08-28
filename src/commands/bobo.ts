@@ -5,6 +5,13 @@ import auth from '../../config/auth.json'
 import axios from 'axios'
 import { BOBO_DIALOGUE_SIGNATURE } from '../features/message'
 import { CommandContext } from '../utils/context'
+import {
+  classifyCallerIntent,
+  shouldWriteMemoryCandidate,
+  type ConversationRoutingResult
+} from '../utils/conversation'
+import { recordConversationEvent } from '../utils/conversationStore'
+import type { EvidenceBlock } from '../utils/evidence'
 
 
 /**
@@ -298,6 +305,10 @@ export class BoboCommand implements Command {
       finalPrompt = '這張圖片是什麼？請跟我聊聊。'
     }
 
+    const callerIntent = classifyCallerIntent(finalPrompt, {
+      addresseeIds: repliedMsg ? [repliedMsg.author.id] : []
+    })
+    const conversationState: { routing: ConversationRoutingResult | null } = { routing: null }
     let typingInterval: NodeJS.Timeout | undefined
     try {
       // 在等待 AI 回應時顯示「正在輸入...」狀態
@@ -398,13 +409,20 @@ export class BoboCommand implements Command {
 
       const limit = (auth as any).chatMemoryLimit || 50
       let channelHistoryContext = ''
+      let evidenceBlocks: EvidenceBlock[] = []
       const historyImagesPayload: { buffer: Buffer; mimeType: string; description?: string }[] = []
 
       const historyTarget = message || interaction
       if (historyTarget && ctx.channel && ctx.channel.isTextBased()) {
         try {
           // 4. 取得混合式上下文 (包含最近的頻道訊息與顯式回覆鏈)
-          const hybridMsgs = await getHybridContext(historyTarget as any, limit, 5)
+          const hybridMsgs = await getHybridContext(historyTarget, limit, 5, {
+            route: true,
+            currentContent: finalPrompt,
+            onRoute: routing => {
+              conversationState.routing = routing
+            }
+          })
           const historyMsgs = [...hybridMsgs].reverse() // 轉為 [最新, ..., 最舊] 以配合原先的處理順序與權重計算
 
           const k = historyMsgs.length
@@ -525,12 +543,30 @@ export class BoboCommand implements Command {
                 `[當前圖片 (由 ${currentSender} 上傳，URL: ${attachment.url})] ${currentProcessedContent}`.trim()
             }
 
+            const currentSourceId = message?.id || `interaction:${interaction!.id}`
+            const routedThreadId =
+              conversationState.routing?.threadId || `thread:${currentSourceId}`
+            evidenceBlocks = [
+              {
+                sourceId: currentSourceId,
+                speakerId: ctx.user.id,
+                threadId: routedThreadId,
+                sourceType: 'human_message',
+                status: 'asserted',
+                timestamp:
+                  message && typeof message.createdTimestamp === 'number'
+                    ? message.createdTimestamp
+                    : Date.now(),
+                content: currentProcessedContent,
+                entityKeys: callerIntent.entityKeys
+              }
+            ]
             let currentEntry = ''
             if (repliedMsg) {
               const repliedSender = repliedMsg.member?.displayName || repliedMsg.author.username
-              currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00, 回覆給: ${repliedSender}] 內容: "${currentProcessedContent}"`
+              currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00, 回覆給: ${repliedSender}, 來源訊息: ${currentSourceId}, thread: ${routedThreadId}, sourceType: human_message, sourceAuthorId: ${ctx.user.id}] 內容: "${currentProcessedContent}"`
             } else {
-              currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00] 內容: "${currentProcessedContent}"`
+              currentEntry = `[時間: 0秒前, 發送者: ${currentSender}, 熱度權重: 1.00, 來源訊息: ${currentSourceId}, thread: ${routedThreadId}, sourceType: human_message, sourceAuthorId: ${ctx.user.id}] 內容: "${currentProcessedContent}"`
             }
 
             const historyEntries = historyMsgs
@@ -552,6 +588,8 @@ export class BoboCommand implements Command {
 
                 const authorName = msg.member?.displayName || msg.author.username
                 const sender = msg.author.id === clientUserId ? '波波' : authorName
+                const sourceType =
+                  msg.author.id === clientUserId ? 'model_output_untrusted' : 'human_message'
 
                 let processedContent = msg.content
 
@@ -616,8 +654,17 @@ export class BoboCommand implements Command {
                   processedContent = `${processedContent} ${mediaAttachmentsInfo.join(' ')}`.trim()
                 }
 
+                evidenceBlocks.push({
+                  sourceId: msg.id,
+                  speakerId: msg.author.id,
+                  threadId: routedThreadId,
+                  sourceType,
+                  status: sourceType === 'model_output_untrusted' ? 'untrusted' : 'asserted',
+                  timestamp: msg.createdTimestamp,
+                  content: processedContent
+                })
                 const replyTargetLabel = isRepliedMessage ? ', 此為回覆目標' : ''
-                return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}${replyTargetLabel}] 內容: "${processedContent}"`
+                return `[時間: ${secondsAgo}秒前, 發送者: ${sender}, 熱度權重: ${weight}${replyTargetLabel}, 來源訊息: ${msg.id}, thread: ${routedThreadId}, sourceType: ${sourceType}, sourceAuthorId: ${msg.author.id}] 內容: "${processedContent}"`
               })
 
             channelHistoryContext = [currentEntry, ...historyEntries].join('\n')
@@ -627,8 +674,44 @@ export class BoboCommand implements Command {
         }
       }
 
+      if (evidenceBlocks.length === 0) {
+        const currentSourceId = message?.id || `interaction:${interaction!.id}`
+        evidenceBlocks = [
+          {
+            sourceId: currentSourceId,
+            speakerId: ctx.user.id,
+            threadId:
+              conversationState.routing?.threadId || `thread:${currentSourceId}`,
+            sourceType: 'human_message',
+            status: 'asserted',
+            timestamp:
+              message && typeof message.createdTimestamp === 'number'
+                ? message.createdTimestamp
+                : Date.now(),
+            content: finalPrompt,
+            entityKeys: callerIntent.entityKeys
+          }
+        ]
+      }
+
       let statusMessage: any = null
       const currentAuthorName = ctx.member?.displayName || ctx.user.username
+      const conversationRouting = conversationState.routing
+
+      if (conversationRouting) {
+        recordConversationEvent({
+          messageId: message?.id || `interaction:${interaction!.id}`,
+          channelId,
+          guildId: ctx.guildId,
+          callerUserId: ctx.user.id,
+          threadId: conversationRouting.threadId,
+          parentMessageId: conversationRouting.parentId,
+          selectedMessageIds: conversationRouting.selectedMessages.map(item => item.id),
+          droppedMessageIds: conversationRouting.droppedMessages.map(item => item.id),
+          evidenceBlocks,
+          intent: callerIntent
+        })
+      }
 
       const reply = await chatWithBobo(
         finalPrompt,
@@ -652,17 +735,41 @@ export class BoboCommand implements Command {
             console.error('Failed to send status update in Discord:', msgErr.message)
           }
         },
-        currentAuthorName
+        currentAuthorName,
+        {
+          threadId: conversationRouting?.threadId,
+          intent: callerIntent
+        },
+        evidenceBlocks
       )
 
-      updateMemoryInBackground(
-        ctx.user.id,
-        currentAuthorName,
-        finalPrompt,
-        reply
-      ).catch(err => {
-        console.error('[Memory Update Background Error]:', err)
-      })
+      if (shouldWriteMemoryCandidate(finalPrompt, callerIntent)) {
+        updateMemoryInBackground(
+          ctx.user.id,
+          currentAuthorName,
+          finalPrompt,
+          reply,
+          {
+            kind: 'profile',
+            subjectUserId: ctx.user.id,
+            threadId: conversationRouting?.threadId,
+            canonicalEntityIds: callerIntent.entityKeys,
+            sourceMessageIds: [message?.id || `interaction:${interaction!.id}`],
+            sourceAuthorIds: [ctx.user.id],
+            sourceType: 'human_message',
+            epistemicStatus: 'asserted',
+            confidence: callerIntent.confidence,
+            observedAt: Date.now(),
+            extractorVersion: 'memory-mvp-v1'
+          }
+        ).catch(err => {
+          console.error('[Memory Update Background Error]:', err)
+        })
+      } else {
+        console.log(
+          `[Memory Gate] Skipped non-factual caller intent: ${callerIntent.intent}`
+        )
+      }
 
       const signedReply = reply + BOBO_DIALOGUE_SIGNATURE
 

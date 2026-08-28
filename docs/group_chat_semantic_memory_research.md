@@ -15,7 +15,7 @@
 
 `訊息正規化 → reply-to/thread 分流 → 呼叫者與意圖分類 → 限定範圍檢索 → 事實工具查核 → 有證據生成 → 寫入候選記憶`
 
-其中 Discord 的明確回覆、mention、股票代號等結構訊號應當優先於語意相似度；模型只在結構訊號不足時補判。以案例「6515」而言，**數字代號應先由確定性的台股代號表解析為欣興，再交給 Gemini 分析**，不能讓近期聊天中的「美光」主題或舊模型輸出參與實體映射。
+其中 Discord 的明確回覆、mention、股票代號等結構訊號應當優先於語意相似度；模型只在結構訊號不足時補判。以案例「3037」而言，**數字代號應先由確定性的台股代號表解析為欣興（6515 則為穎崴），再交給 Gemini 分析**，不能讓近期聊天中的「美光」主題或舊模型輸出參與實體映射。
 
 ## 文獻地圖與可實作重點
 
@@ -47,22 +47,22 @@
 
 但案例仍會失敗，原因是：
 
-1. `getHybridContext()` 仍把頻道最近最多 50 則訊息整批交給模型；時間衰減不是 topic disentanglement。多個熱門話題同時存在時，「美光」可能比「6515」的正確實體映射更顯眼。
+1. `getHybridContext()` 仍把頻道最近最多 50 則訊息整批交給模型；時間衰減不是 topic disentanglement。多個熱門話題同時存在時，「美光」可能比「3037/6515」的正確實體映射更顯眼。
 2. 明確 reply chain 只保證被取回，沒有排除其他 thread。
 3. Mem0 搜尋只用原始 `prompt` 與 `user_id`；未加入 `thread_id`、entity、memory type、可信度與來源狀態。
 4. 「使用者說過」不等於「事實」。即使不再儲存 AI 輸出，人類聊天室中的猜測、反串與謠言仍可能進入記憶。
-5. 股票實體解析與自然語言生成界線不夠硬。`6515 → 欣興` 應是 deterministic lookup 的結果，不是 LLM 可自行改寫的內容。
+5. 股票實體解析與自然語言生成界線不夠硬。`3037 → 欣興`、`6515 → 穎崴` 應是 deterministic lookup 的結果，不是 LLM 可自行改寫的內容。
 
 ## 建議的分階段架構
 
 ### 第 0 層：確定性正規化與實體鎖定
 
-先處理不應交給 LLM 猜測的訊號：Discord message/reply/mention ID、使用者 ID、URL、時間，以及台股四位數代號。對 `6515` 呼叫既有 `lookupStockTicker()` / `getTaiwanStockName()`，產生不可由模型覆蓋的：
+先處理不應交給 LLM 猜測的訊號：Discord message/reply/mention ID、使用者 ID、URL、時間，以及台股四位數代號。對 `3037`（欣興）與 `6515`（穎崴）呼叫既有 `lookupStockTicker()` / `getTaiwanStockName()`，產生不可由模型覆蓋的：
 
 ```ts
 type ResolvedEntity = {
-  surface: string       // "6515"
-  canonicalId: string   // "TWSE:6515"
+  surface: string       // "3037"
+  canonicalId: string   // "TWSE:3037"
   canonicalName: string // "欣興"
   source: 'stock_lookup'
   confidence: 1
@@ -165,7 +165,7 @@ retrievalScore =
 
 傳給 Gemini 的 context 應為結構化 evidence blocks，每筆含 `sourceId`、speaker、thread、status、timestamp；要求回答中的公司名、代號、數值、日期只能來自 evidence。生成後再做便宜的 deterministic validator：
 
-- 回答同時出現 `6515` 與非「欣興」公司名：拒絕並重生。
+- 回答同時出現 `3037` 與非「欣興」公司名（或 `6515` 與非「穎崴」）：拒絕並重生。
 - 報價沒有即時工具結果：不給精確現價。
 - 回答中的每個 canonical entity 必須存在於 evidence。
 - 沒有足夠證據時輸出「目前無法確認」，不補猜。
@@ -186,7 +186,7 @@ retrievalScore =
 
 1. parent message 與 `threadId`；
 2. caller、addressee、dialogue act、intent；
-3. canonical entities（如 `TWSE:6515`）；
+3. canonical entities（如 `TWSE:3037`）；
 4. 回答需要的 evidence message IDs；
 5. 每個回答原子主張是否受 evidence 支持；
 6. 是否應寫入記憶、subject 是誰、status/TTL。
@@ -209,7 +209,7 @@ retrievalScore =
 ## 建議 MVP：先做四週，不先訓練新模型
 
 1. **建立事件與 metadata 表**：保存 message/reply/mention/entity/thread/analysis/evidence，不急著替換 Mem0。
-2. **做 deterministic entity gate**：所有股票代號先查既有 registry；加入 `6515 → 欣興`、`MU → 美光` 等 regression tests。
+2. **做 deterministic entity gate**：所有股票代號先查既有 registry；加入 `3037 → 欣興`、`6515 → 穎崴`、`MU → 美光` 等 regression tests。
 3. **做 rule-first thread router**：explicit reply > mention > entity overlap > embedding/time；只傳入選中 thread，保留最多 1–2 則鄰近其他 thread 作背景且明確標為 out-of-thread。
 4. **做 structured intent classifier**：Gemini 僅回 JSON；低信心 abstain。
 5. **包一層 MemoryRepository**：Mem0 仍負責向量存取，但 SQLite 保存完整 metadata/provenance，搜尋前後強制 subject/thread/kind/status filter。

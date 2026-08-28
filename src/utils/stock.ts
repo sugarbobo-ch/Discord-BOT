@@ -7,6 +7,142 @@ const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey']
 })
 
+export interface DeterministicStockEntity {
+  surface: string
+  canonicalId: string
+  ticker: string
+  canonicalName: string
+  source: 'stock_lookup'
+  confidence: 1
+  conflictingLabels: readonly string[]
+}
+
+const DETERMINISTIC_STOCK_ENTITY_DEFINITIONS = [
+  {
+    keys: ['3037', '3037.TW', '欣興', '麵包店', '客運'],
+    canonicalId: 'TWSE:3037',
+    ticker: '3037.TW',
+    canonicalName: '欣興',
+    conflictingLabels: ['美光', 'MU', 'Micron']
+  },
+  {
+    keys: ['6515', '6515.TW', '6515.TWO', '穎崴'],
+    canonicalId: 'TWSE:6515',
+    ticker: '6515.TW',
+    canonicalName: '穎崴',
+    conflictingLabels: ['美光', 'MU', 'Micron']
+  }
+] as const
+
+/**
+ * Small, offline entity locks for high-risk mappings. These are consulted
+ * before any model output so a recent chat topic cannot remap a literal code.
+ */
+export const DETERMINISTIC_STOCK_ENTITIES: ReadonlyArray<DeterministicStockEntity> =
+  DETERMINISTIC_STOCK_ENTITY_DEFINITIONS.flatMap(definition =>
+    definition.keys.map(surface => ({
+      surface,
+      canonicalId: definition.canonicalId,
+      ticker: definition.ticker,
+      canonicalName: definition.canonicalName,
+      source: 'stock_lookup' as const,
+      confidence: 1 as const,
+      conflictingLabels: definition.conflictingLabels
+    }))
+  )
+
+const deterministicStockEntityByKey = new Map(
+  DETERMINISTIC_STOCK_ENTITIES.map(entity => [entity.surface.toLocaleUpperCase(), entity])
+)
+
+function normalizeDeterministicStockKey(query: string): string {
+  const normalized = query.trim().toLocaleUpperCase()
+  return /^\d{4,6}\.(?:TW|TWO)$/.test(normalized) ? normalized.split('.')[0] : normalized
+}
+
+export function resolveDeterministicStockEntity(query: string): DeterministicStockEntity | null {
+  const entity = deterministicStockEntityByKey.get(normalizeDeterministicStockKey(query))
+  return entity ? { ...entity, surface: query.trim() } : null
+}
+
+export function extractDeterministicStockEntities(text: string): DeterministicStockEntity[] {
+  const entities: DeterministicStockEntity[] = []
+  for (const definition of DETERMINISTIC_STOCK_ENTITY_DEFINITIONS) {
+    const matchedKey = definition.keys.find(key => {
+      if (/^\d{4,6}(?:\.(?:TW|TWO))?$/.test(key)) {
+        return new RegExp(`\\b${key.split('.')[0]}(?:\\.(?:TW|TWO))?\\b`, 'i').test(text)
+      }
+      return text.toLocaleUpperCase().includes(key.toLocaleUpperCase())
+    })
+    if (matchedKey) {
+      entities.push({
+        surface: matchedKey,
+        canonicalId: definition.canonicalId,
+        ticker: definition.ticker,
+        canonicalName: definition.canonicalName,
+        source: 'stock_lookup',
+        confidence: 1,
+        conflictingLabels: definition.conflictingLabels
+      })
+    }
+  }
+  return entities
+}
+
+export interface DeterministicClaimValidation {
+  valid: boolean
+  violations: string[]
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Check only deterministic entity-to-label claims. General prose remains the
+ * model's responsibility; this gate protects known high-risk mappings.
+ */
+export function validateDeterministicStockClaims(
+  text: string,
+  entities: readonly DeterministicStockEntity[]
+): DeterministicClaimValidation {
+  const violations: string[] = []
+  const claimGap = '[^\\n。！？!?，,；;、]{0,20}'
+  const mappingWords = '(?:是|為|代表|對應|代號|代碼|->|→|\\(|（|：|:)'
+
+  const isNonNegatedMatch = (pattern: RegExp, conflictPattern: string): boolean => {
+    const match = text.match(pattern)
+    if (!match) return false
+    return !new RegExp(`(?:不是|並非|非|不等於)\\s*${conflictPattern}`, 'i').test(match[0])
+  }
+
+  for (const entity of entities) {
+    const sourceLabels = [entity.surface, entity.ticker, entity.canonicalId]
+    for (const sourceLabel of sourceLabels) {
+      const sourcePattern = escapeRegExp(sourceLabel)
+      for (const conflictLabel of entity.conflictingLabels) {
+        const conflictPattern = escapeRegExp(conflictLabel)
+        const sourceToConflict = new RegExp(
+          `${sourcePattern}${claimGap}${mappingWords}${claimGap}${conflictPattern}`,
+          'i'
+        )
+        const conflictToSource = new RegExp(
+          `${conflictPattern}${claimGap}${mappingWords}${claimGap}${sourcePattern}`,
+          'i'
+        )
+        if (
+          isNonNegatedMatch(sourceToConflict, conflictPattern) ||
+          isNonNegatedMatch(conflictToSource, sourcePattern)
+        ) {
+          violations.push(`${sourceLabel} 不得對應 ${conflictLabel}`)
+        }
+      }
+    }
+  }
+
+  return { valid: violations.length === 0, violations: Array.from(new Set(violations)) }
+}
+
 export const COMMON_STOCK_MAP: Record<string, string> = {
   // 熱門 ETF (以防證交所 JSON 更新或快取失效，作為快速查表)
   '0050': '0050.TW',
@@ -23,6 +159,10 @@ export const COMMON_STOCK_MAP: Record<string, string> = {
   元大台灣價值高息: '00940.TW',
   '00981A': '00981A.TW',
   '00403A': '00403A.TW',
+  '3037': '3037.TW',
+  欣興: '3037.TW',
+  '6515': '6515.TW',
+  穎崴: '6515.TW',
 
   // 常見美股與 ADR
   蘋果: 'AAPL',
@@ -926,6 +1066,16 @@ export function getTaiwanStockName(symbol: string): string | null {
       return key
     }
   }
+
+  const deterministicEntity = resolveDeterministicStockEntity(upperSymbol)
+  if (
+    deterministicEntity &&
+    (deterministicEntity.ticker.toUpperCase() === upperSymbol ||
+      deterministicEntity.ticker.split('.')[0].toUpperCase() === code)
+  ) {
+    return deterministicEntity.canonicalName
+  }
+
   return null
 }
 

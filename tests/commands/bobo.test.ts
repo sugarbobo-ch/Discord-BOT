@@ -118,12 +118,53 @@ describe('BoboCommand Reply Tests', () => {
     await boboCommand.execute(mockMessage, ['你好'])
 
     expect(mockMessage.channel.messages.fetch).toHaveBeenCalledWith('replied_msg_id')
+    expect(getHybridContext).toHaveBeenCalledWith(
+      mockMessage,
+      expect.any(Number),
+      5,
+      expect.objectContaining({
+        route: true,
+        currentContent: '你好'
+      })
+    )
+    expect(vi.mocked(chatWithBobo).mock.calls[0][8]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceId: 'msg_id',
+          speakerId: 'user_123',
+          sourceType: 'human_message'
+        })
+      ])
+    )
     expect(chatWithBobo).toHaveBeenCalled()
 
     const historyContextArg = vi.mocked(chatWithBobo).mock.calls[0][2]
     expect(historyContextArg).toContain('回覆給: 小明')
     expect(historyContextArg).toContain('熱度權重: 1.00, 此為回覆目標')
     expect(historyContextArg).toContain('這是被回覆的原始訊息內容')
+  })
+
+  test('should write stable caller facts with provenance but skip bot corrections', async () => {
+    await boboCommand.execute(mockMessage, ['我喜歡吃拉麵'])
+
+    expect(updateMemoryInBackground).toHaveBeenCalledWith(
+      'user_123',
+      '大華',
+      '我喜歡吃拉麵',
+      '這是波波的回答',
+      expect.objectContaining({
+        kind: 'profile',
+        subjectUserId: 'user_123',
+        sourceMessageIds: ['msg_id'],
+        sourceAuthorIds: ['user_123'],
+        sourceType: 'human_message',
+        epistemicStatus: 'asserted'
+      })
+    )
+
+    vi.mocked(updateMemoryInBackground).mockClear()
+    await boboCommand.execute(mockMessage, ['6515不是美光'])
+    expect(updateMemoryInBackground).not.toHaveBeenCalled()
   })
 
   test('should download and set replied image as primary image if current message has no image', async () => {

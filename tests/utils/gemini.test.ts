@@ -16,11 +16,8 @@ import {
   typoCooldownMap,
   chatCooldownMap
 } from '../../src/utils/gemini'
-import {
-  clearStockCache,
-  getStockPrice,
-  searchStockTickerWithYahoo
-} from '../../src/utils/stock'
+import { clearStockCache, getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
+import { memoryRepository } from '../../src/utils/memoryRepository'
 import yahooFinance from 'yahoo-finance2'
 import auth from '../../config/auth.json'
 
@@ -53,6 +50,8 @@ vi.mock('../../src/utils/stock', async importOriginal => {
   }
 })
 
+const memorySearchSpy = vi.spyOn(memoryRepository, 'search')
+
 describe('Gemini Utility Tests', () => {
   beforeEach(() => {
     vi.resetAllMocks()
@@ -65,6 +64,7 @@ describe('Gemini Utility Tests', () => {
     typoCooldownMap.clear()
     chatCooldownMap.clear()
     clearStockCache()
+    memorySearchSpy.mockResolvedValue({ results: [] })
   })
 
   test('checkImageNSFW should return false and reason when image is safe', async () => {
@@ -154,7 +154,7 @@ describe('Gemini Utility Tests', () => {
           {
             parts: expect.arrayContaining([
               expect.objectContaining({
-                text: expect.stringContaining('以下是該聊天頻道的近期對話脈絡')
+                text: expect.stringContaining('以下是由 rule-first conversation router 選中的 evidence blocks')
               }),
               expect.objectContaining({
                 text: expect.stringContaining(
@@ -547,8 +547,8 @@ describe('Gemini Utility Tests', () => {
 
   test('chatWithBobo should prefer an explicit Taiwan ticker over a hallucinated AI mapping', async () => {
     vi.mocked(searchStockTickerWithYahoo).mockImplementation(async query => {
-      if (query === '6515') {
-        return { symbol: '6515.TW', name: '欣興' }
+      if (query === '3037') {
+        return { symbol: '3037.TW', name: '欣興' }
       }
       return null
     })
@@ -568,21 +568,91 @@ describe('Gemini Utility Tests', () => {
         ]
       })
       .mockResolvedValueOnce({
-        candidates: [{ content: { parts: [{ text: '6515 是欣興。' }] } }]
+        candidates: [{ content: { parts: [{ text: '3037 是欣興。' }] } }]
       })
 
     const reply = await chatWithBobo(
-      '6515的2026目標價多少，會因為輝達財報好有爆發性成長嗎',
+      '3037的2026目標價多少，會因為輝達財報好有爆發性成長嗎',
       'user_explicit_ticker_test'
     )
 
-    expect(reply).toBe('6515 是欣興。')
-    expect(searchStockTickerWithYahoo).toHaveBeenCalledWith('6515')
+    expect(reply).toBe('3037 是欣興。')
+    expect(searchStockTickerWithYahoo).not.toHaveBeenCalledWith('3037')
 
     const finalRequest = mockGenerateContent.mock.calls[1][0]
     const serializedRequest = JSON.stringify(finalRequest)
-    expect(serializedRequest).toContain('股票名稱: 欣興 (代號: 6515.TW)')
+    expect(serializedRequest).toContain('股票名稱: 欣興 (代號: 3037.TW)')
     expect(serializedRequest).not.toContain('(代號: MU)')
+  })
+
+  test('chatWithBobo should keep the deterministic entity lock during a correction', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      candidates: [{ content: { parts: [{ text: '對，3037 是欣興，不是美光。' }] } }]
+    })
+
+    const reply = await chatWithBobo('3037不是美光', 'user_entity_correction_test')
+
+    expect(reply).toBe('對，3037 是欣興，不是美光。')
+    const request = mockGenerateContent.mock.calls[0][0]
+    const serializedRequest = JSON.stringify(request)
+    expect(serializedRequest).toContain('3037 -> 欣興')
+    expect(serializedRequest).toContain('TWSE:3037')
+  })
+
+  test('chatWithBobo should repair a response that maps 3037 to MU', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "美光", "ticker": "MU"}]}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '3037 (美商美光 MU) 的目標價分析。' }] } }]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '3037 是欣興，以下分析以欣興為準。' }] } }]
+      })
+
+    const reply = await chatWithBobo('3037的目標價多少？', 'user_entity_repair_test')
+
+    expect(reply).toBe('3037 是欣興，以下分析以欣興為準。')
+    expect(mockGenerateContent).toHaveBeenCalledTimes(3)
+  })
+
+  test('chatWithBobo should repair an invented current stock price', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "台積電", "ticker": "2330.TW"}]}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '台積電目前股價是 9999 元。' }] } }]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '台積電目前股價是 600 元。' }] } }]
+      })
+
+    const reply = await chatWithBobo('幫我查 2330 股價', 'user_price_repair_test')
+
+    expect(reply).toBe('台積電目前股價是 600 元。')
+    expect(mockGenerateContent).toHaveBeenCalledTimes(3)
   })
 
   test('chatWithBobo should clean stock names and match them correctly', async () => {
@@ -709,7 +779,10 @@ describe('Gemini Utility Tests', () => {
     )
 
     // Test 3: Casual long prompt (> 60 chars)
-    await chatWithBobo('今天天氣真的很好而且放假不知道要去哪裡玩，你有什麼推薦的郊遊行程或是適合去逛逛的好地方嗎？可以跟我多聊聊一些好玩的景點推薦或是好吃的下午茶店嗎？', 'user_long')
+    await chatWithBobo(
+      '今天天氣真的很好而且放假不知道要去哪裡玩，你有什麼推薦的郊遊行程或是適合去逛逛的好地方嗎？可以跟我多聊聊一些好玩的景點推薦或是好吃的下午茶店嗎？',
+      'user_long'
+    )
     expect(mockGenerateContent).toHaveBeenLastCalledWith(
       expect.objectContaining({
         contents: expect.arrayContaining([

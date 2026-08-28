@@ -46,6 +46,59 @@ export function getDb(): any {
       memory_enabled INTEGER DEFAULT 1
     );
 
+    CREATE TABLE IF NOT EXISTS conversation_events (
+      message_id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      guild_id TEXT,
+      caller_user_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      parent_message_id TEXT,
+      selected_message_ids TEXT NOT NULL DEFAULT '[]',
+      dropped_message_ids TEXT NOT NULL DEFAULT '[]',
+      evidence_blocks TEXT NOT NULL DEFAULT '[]',
+      addressee_ids TEXT NOT NULL DEFAULT '[]',
+      entity_keys TEXT NOT NULL DEFAULT '[]',
+      dialogue_act TEXT NOT NULL,
+      intent TEXT NOT NULL,
+      needs_external_fact INTEGER NOT NULL DEFAULT 0,
+      confidence REAL NOT NULL,
+      analysis_version TEXT NOT NULL DEFAULT 'rule-v1',
+      observed_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversation_events_thread
+      ON conversation_events(thread_id, observed_at);
+
+    CREATE INDEX IF NOT EXISTS idx_conversation_events_caller
+      ON conversation_events(caller_user_id, observed_at);
+
+    CREATE TABLE IF NOT EXISTS memory_records (
+      memory_id TEXT PRIMARY KEY,
+      scope_user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      subject_user_id TEXT,
+      thread_id TEXT,
+      canonical_entity_ids TEXT NOT NULL DEFAULT '[]',
+      value TEXT NOT NULL,
+      source_message_ids TEXT NOT NULL DEFAULT '[]',
+      source_author_ids TEXT NOT NULL DEFAULT '[]',
+      source_type TEXT NOT NULL,
+      epistemic_status TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      observed_at INTEGER NOT NULL,
+      valid_until INTEGER,
+      extractor_version TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_records_scope
+      ON memory_records(scope_user_id, observed_at);
+
+    CREATE INDEX IF NOT EXISTS idx_memory_records_subject
+      ON memory_records(subject_user_id, observed_at);
+
+    CREATE INDEX IF NOT EXISTS idx_memory_records_thread
+      ON memory_records(thread_id, observed_at);
+
     CREATE TABLE IF NOT EXISTS forbidden_words (
       server_id TEXT NOT NULL,
       word TEXT NOT NULL,
@@ -63,6 +116,12 @@ export function getDb(): any {
 
   try {
     dbConnection.exec('ALTER TABLE settings ADD COLUMN detect_nsfw INTEGER DEFAULT 1;')
+  } catch {
+    // 欄位已存在會丟出錯誤，可以直接忽略
+  }
+
+  try {
+    dbConnection.exec("ALTER TABLE conversation_events ADD COLUMN evidence_blocks TEXT NOT NULL DEFAULT '[]';")
   } catch {
     // 欄位已存在會丟出錯誤，可以直接忽略
   }
@@ -248,5 +307,3 @@ export function getForbiddenWords(serverId: string): string[] {
     return []
   }
 }
-
-

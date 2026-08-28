@@ -7,11 +7,17 @@ import {
   ComponentType,
   ChatInputCommandInteraction,
   MessageFlags,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  PermissionFlagsBits
 } from 'discord.js'
 import { Command } from './command.interface'
 import { setUserMemorySetting } from '../utils/db'
 import { executeMemoryOp } from '../utils/gemini/mem0'
+import {
+  getMemoryWriteStatus,
+  setMemoryDirect
+} from '../utils/gemini/memory'
+import { memoryRepository } from '../utils/memoryRepository'
 import path from 'path'
 
 let DatabaseSync: any
@@ -34,8 +40,9 @@ function getMemoriesFromDB(userId: string): any[] {
       ORDER BY json_extract(payload, '$.updatedAt') DESC, json_extract(payload, '$.createdAt') DESC
     `
     const rows = db.prepare(query).all(userId) as any[]
-    return rows.map(r => {
+    return rows.flatMap(r => {
       const payload = JSON.parse(r.payload)
+      if (payload.attributedTo === 'assistant') return []
       return {
         id: r.id,
         memory: payload.data,
@@ -55,9 +62,34 @@ function getMemoriesFromDB(userId: string): any[] {
 async function getMemoriesForSubcommand(userId: string): Promise<any[]> {
   if (process.env.NODE_ENV === 'test') {
     const searchRes = await executeMemoryOp<any>(memory => memory.getAll({ filters: { user_id: userId }, topK: 1000 }))
-    return searchRes?.results || []
+    return (searchRes?.results || []).filter((item: any) => item?.attributedTo !== 'assistant')
   }
   return getMemoriesFromDB(userId)
+}
+
+function hasMemoryStatusPermission(member: any): boolean {
+  const permissions = member?.permissions
+  return Boolean(
+    permissions?.has &&
+      (permissions.has(PermissionFlagsBits.Administrator) ||
+        permissions.has(PermissionFlagsBits.ManageGuild))
+  )
+}
+
+function formatMemoryWriteStatus(): string {
+  const status = getMemoryWriteStatus()
+  const seconds = (milliseconds: number) => Math.ceil(milliseconds / 1000)
+  const oldest = status.oldestQueuedAgeMs > 0 ? `${seconds(status.oldestQueuedAgeMs)} 秒` : '—'
+  const retryWait = status.retryWaitMs > 0 ? `${seconds(status.retryWaitMs)} 秒` : '—'
+  return [
+    '🧠 **Mem0 背景寫入狀態**',
+    `啟動時間：<t:${Math.floor(status.startedAt / 1000)}:F>`,
+    `Worker：${status.active ? '處理中' : '閒置'}｜Queue：${status.queueDepth} 筆`,
+    `最舊排隊：${oldest}｜目前等待：${retryWait}`,
+    `成功：${status.counters.success}｜未抽取：${status.counters.no_memory}`,
+    `429：${status.counters.rate_limited}｜永久失敗：${status.counters.permanent_failure}`,
+    '（計數自本次 Bot 程序啟動後累計；429 可在稍後成功時同時增加。）'
+  ].join('\n')
 }
 
 /**
@@ -82,8 +114,9 @@ async function handleViewMemory(
       const dbPath = path.join(process.cwd(), 'config', 'bobo_mem0_vectors.db')
       const db = new DatabaseSync(dbPath)
       const row = db.prepare(`
-        SELECT COUNT(*) as count FROM vectors 
+        SELECT COUNT(*) as count FROM vectors
         WHERE json_extract(payload, '$.user_id') = ?
+          AND COALESCE(json_extract(payload, '$.attributedTo'), 'user') <> 'assistant'
       `).get(userId) as { count: number } | undefined
       totalCount = row ? row.count : 0
     } catch (err) {
@@ -109,6 +142,7 @@ async function handleViewMemory(
       const query = `
         SELECT id, payload FROM vectors
         WHERE json_extract(payload, '$.user_id') = ?
+          AND COALESCE(json_extract(payload, '$.attributedTo'), 'user') <> 'assistant'
         ORDER BY json_extract(payload, '$.updatedAt') DESC, json_extract(payload, '$.createdAt') DESC
         LIMIT ? OFFSET ?
       `
@@ -139,6 +173,7 @@ async function handleViewMemory(
       const query = `
         SELECT id, payload FROM vectors
         WHERE json_extract(payload, '$.user_id') = ?
+          AND COALESCE(json_extract(payload, '$.attributedTo'), 'user') <> 'assistant'
         ORDER BY json_extract(payload, '$.updatedAt') DESC, json_extract(payload, '$.createdAt') DESC
         LIMIT ? OFFSET ?
       `
@@ -518,6 +553,11 @@ export class MemoryCommand implements Command {
           name: '關閉',
           description: '關閉波波對你的記憶功能',
           type: 1 // SUB_COMMAND
+        },
+        {
+          name: '狀態',
+          description: '查看 Mem0 背景寫入狀態（限管理員）',
+          type: 1 // SUB_COMMAND
         }
       ]
     },
@@ -555,6 +595,7 @@ export class MemoryCommand implements Command {
 • \`!記憶 刪除 <編號或關鍵字>\` - 刪除特定記憶條目。可以指定列表編號（如 \`3\`）或關鍵字（如 \`蘋果\`）。
 • \`!記憶 開啟\` - 開啟波波對你的記憶功能。
 • \`!記憶 關閉\` - 關閉波波對你的記憶功能。
+• \`!記憶 狀態\` - 查看 Mem0 背景寫入狀態（限管理員）。
 • \`!我的記憶 [排序]\` - 快速查看波波對你記錄的長期記憶。`
 
     if (!subcommand) {
@@ -569,6 +610,7 @@ export class MemoryCommand implements Command {
         await handleViewMemory(message, userId, username, sortParam, false)
       } else if (subcommand === '清除' || subcommand === 'clear') {
         await executeMemoryOp(memory => memory.deleteAll({ userId }))
+        memoryRepository.deleteScopeRecords(userId)
         await message.reply(`🧹 長期記憶已成功清除！`)
       } else if (subcommand === '設定' || subcommand === 'set') {
         const content = args.slice(1).join(' ').trim()
@@ -578,11 +620,17 @@ export class MemoryCommand implements Command {
         }
         const statusMessage = await message.reply(`🔍 正在處理並設定長期記憶，請稍候...`)
         try {
-          await executeMemoryOp(async (memory) => {
-            await memory.deleteAll({ userId })
-            await memory.add(content, { userId })
+          const outcome = await setMemoryDirect(userId, content, 60_000, {
+            sourceMessageIds: [message.id],
+            sourceAuthorIds: [userId]
           })
-          await statusMessage.edit(`✍️ 長期記憶已設定為：\n${content}`)
+          if (outcome.status === 'stored') {
+            await statusMessage.edit(`✍️ 長期記憶已設定為：\n${content}`)
+          } else if (outcome.status === 'no_memory') {
+            await statusMessage.edit('⚠️ Mem0 沒有從這段內容抽取出新的長期記憶，原有記憶未能建立。')
+          } else {
+            await statusMessage.edit('❌ Mem0 暫時無法設定這筆記憶，請稍後再試。')
+          }
         } catch (err: any) {
           console.error('Error setting memory:', err)
           await statusMessage.edit(`❌ 處理記憶指令時發生錯誤：${err.message}`)
@@ -636,6 +684,12 @@ export class MemoryCommand implements Command {
       } else if (subcommand === '關閉' || subcommand === 'disable') {
         setUserMemorySetting(userId, false)
         await message.reply(`🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`)
+      } else if (subcommand === '狀態' || subcommand === 'status') {
+        if (!hasMemoryStatusPermission(message.member)) {
+          await message.reply('❌ 只有管理員或擁有「管理伺服器」權限的使用者才能查看記憶系統狀態。')
+          return
+        }
+        await message.reply(formatMemoryWriteStatus())
       } else {
         await message.reply(usageInstructions)
       }
@@ -658,6 +712,7 @@ export class MemoryCommand implements Command {
         await handleViewMemory(interaction, userId, username, sortParam, true)
       } else if (subcommand === '清除') {
         await executeMemoryOp(memory => memory.deleteAll({ userId }))
+        memoryRepository.deleteScopeRecords(userId)
         await interaction.reply({ content: `🧹 長期記憶已成功清除！`, flags: MessageFlags.Ephemeral })
       } else if (subcommand === '設定') {
         const content = interaction.options.getString('內容')?.trim()
@@ -667,11 +722,17 @@ export class MemoryCommand implements Command {
         }
         await interaction.deferReply({ flags: MessageFlags.Ephemeral })
         try {
-          await executeMemoryOp(async (memory) => {
-            await memory.deleteAll({ userId })
-            await memory.add(content, { userId })
+          const outcome = await setMemoryDirect(userId, content, 60_000, {
+            sourceMessageIds: [`interaction:${interaction.id}`],
+            sourceAuthorIds: [userId]
           })
-          await interaction.editReply({ content: `✍️ 長期記憶已設定為：\n${content}` })
+          if (outcome.status === 'stored') {
+            await interaction.editReply({ content: `✍️ 長期記憶已設定為：\n${content}` })
+          } else if (outcome.status === 'no_memory') {
+            await interaction.editReply({ content: '⚠️ Mem0 沒有從這段內容抽取出新的長期記憶，原有記憶未能建立。' })
+          } else {
+            await interaction.editReply({ content: '❌ Mem0 暫時無法設定這筆記憶，請稍後再試。' })
+          }
         } catch (err: any) {
           console.error('Error setting memory slash:', err)
           await interaction.editReply({ content: `❌ 處理記憶時發生錯誤：${err.message}` })
@@ -726,6 +787,12 @@ export class MemoryCommand implements Command {
       } else if (subcommand === '關閉') {
         setUserMemorySetting(userId, false)
         await interaction.reply({ content: `🔴 長期記憶功能已關閉！波波將不會記錄你的特徵，且不會讀取你之前的記憶。`, flags: MessageFlags.Ephemeral })
+      } else if (subcommand === '狀態') {
+        if (!hasMemoryStatusPermission(interaction.member)) {
+          await interaction.reply({ content: '❌ 只有管理員或擁有「管理伺服器」權限的使用者才能查看記憶系統狀態。', flags: MessageFlags.Ephemeral })
+          return
+        }
+        await interaction.reply({ content: formatMemoryWriteStatus(), flags: MessageFlags.Ephemeral })
       }
     } catch (err: any) {
       console.error('Error handling slash memory command:', err)

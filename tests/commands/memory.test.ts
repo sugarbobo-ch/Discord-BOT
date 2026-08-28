@@ -25,7 +25,11 @@ vi.mock('../../src/utils/gemini/mem0', () => {
   }
   return {
     getMemory: () => mockMemory,
-    executeMemoryOp: (fn: any) => fn(mockMemory)
+    executeMemoryOp: (fn: any) => fn(mockMemory),
+    classifyMemoryError: (error: unknown) => ({ category: 'permanent', cause: error }),
+    MemoryOperationError: class MemoryOperationError extends Error {
+      category = 'permanent'
+    }
   }
 })
 
@@ -40,6 +44,8 @@ describe('MemoryCommand Tests', () => {
 
   beforeEach(() => {
     vi.resetAllMocks()
+    mockAdd.mockResolvedValue({ results: [{ id: 'test-memory' }] })
+    mockGetAll.mockResolvedValue({ results: [] })
     memoryCommand = new MemoryCommand()
     
     const mockCollector = {
@@ -61,6 +67,30 @@ describe('MemoryCommand Tests', () => {
     expect(memoryCommand.names).toContain('記憶')
     expect(memoryCommand.names).toContain('memory')
     expect(memoryCommand.names).toContain('我的記憶')
+    expect(memoryCommand.slashData[0].options).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: '狀態', type: 1 })])
+    )
+  })
+
+  test('should restrict memory status to administrators or ManageGuild members', async () => {
+    mockMessage.content = '!記憶 狀態'
+    mockMessage.member.permissions = { has: vi.fn().mockReturnValue(false) }
+
+    await memoryCommand.execute(mockMessage, ['狀態'])
+
+    expect(mockMessage.reply).toHaveBeenCalledWith(expect.stringContaining('只有管理員'))
+  })
+
+  test('should show memory write status to a ManageGuild member', async () => {
+    mockMessage.content = '!記憶 狀態'
+    mockMessage.member.permissions = {
+      has: vi.fn().mockReturnValue(true)
+    }
+
+    await memoryCommand.execute(mockMessage, ['狀態'])
+
+    expect(mockMessage.reply).toHaveBeenCalledWith(expect.stringContaining('Mem0 背景寫入狀態'))
+    expect(mockMessage.reply).toHaveBeenCalledWith(expect.stringContaining('永久失敗'))
   })
 
   test('should show empty message if no memory exists', async () => {
@@ -179,8 +209,49 @@ describe('MemoryCommand Tests', () => {
     expect(mockEdit).toHaveBeenCalledWith(
       expect.stringContaining('長期記憶已設定為')
     )
-    expect(mockDeleteAll).toHaveBeenCalledWith({ userId: mockMessage.author.id })
-    expect(mockAdd).toHaveBeenCalledWith('我是個喜歡吃拉麵的人。', { userId: mockMessage.author.id })
+    expect(mockGetAll).toHaveBeenCalledWith({
+      filters: { user_id: mockMessage.author.id },
+      topK: 1000
+    })
+    expect(mockAdd).toHaveBeenCalledWith(
+      '我是個喜歡吃拉麵的人。',
+      expect.objectContaining({
+        userId: mockMessage.author.id,
+        metadata: expect.objectContaining({
+          kind: 'profile',
+          subject_user_id: mockMessage.author.id,
+          source_type: 'human_message'
+        })
+      })
+    )
+  })
+
+  test('should preserve existing memories when manual extraction returns no results', async () => {
+    mockAdd.mockResolvedValueOnce({ results: [] })
+    mockMessage.content = '!記憶 設定 隨便聊聊'
+
+    const mockEdit = vi.fn().mockResolvedValue(true)
+    mockMessage.reply.mockResolvedValueOnce({ edit: mockEdit })
+
+    await memoryCommand.execute(mockMessage, ['設定', '隨便聊聊'])
+
+    expect(mockDeleteAll).not.toHaveBeenCalled()
+    expect(mockEdit).toHaveBeenCalledWith(expect.stringContaining('沒有從這段內容抽取'))
+  })
+
+  test('should delete old memories only after a replacement is extracted', async () => {
+    mockGetAll.mockResolvedValueOnce({ results: [{ id: 'old-memory' }] })
+    mockAdd.mockResolvedValueOnce({ results: [{ id: 'new-memory' }] })
+    mockMessage.content = '!記憶 設定 我改喜歡吃壽司。'
+
+    const mockEdit = vi.fn().mockResolvedValue(true)
+    mockMessage.reply.mockResolvedValueOnce({ edit: mockEdit })
+
+    await memoryCommand.execute(mockMessage, ['設定', '我改喜歡吃壽司。'])
+
+    expect(mockDeleteAll).not.toHaveBeenCalled()
+    expect(mockDelete).toHaveBeenCalledWith('old-memory')
+    expect(mockEdit).toHaveBeenCalledWith(expect.stringContaining('長期記憶已設定為'))
   })
 
   test('should enable memory setting successfully via subcommands', async () => {
@@ -458,6 +529,27 @@ describe('MemoryCommand Tests', () => {
     expect(mockInteraction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining('已成功刪除第 1 條記憶')
+      })
+    )
+  })
+
+  test('should show memory write status ephemerally for an administrator', async () => {
+    const mockInteraction: any = {
+      commandName: '記憶',
+      options: {
+        getSubcommand: () => '狀態'
+      },
+      user: { id: 'test_user_status_slash', username: 'TestStatus' },
+      member: { permissions: { has: vi.fn().mockReturnValue(true) } },
+      reply: vi.fn().mockResolvedValue(true)
+    }
+
+    await memoryCommand.executeSlash(mockInteraction)
+
+    expect(mockInteraction.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('Mem0 背景寫入狀態'),
+        flags: expect.anything()
       })
     )
   })

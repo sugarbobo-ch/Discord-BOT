@@ -1,5 +1,11 @@
 import { describe, test, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { getDb, getUserMemory, setUserMemory, getUserMemorySetting, setUserMemorySetting } from '../../src/utils/db'
+import {
+  getDb,
+  getUserMemory,
+  setUserMemory,
+  getUserMemorySetting,
+  setUserMemorySetting
+} from '../../src/utils/db'
 import { getHybridContext, updateMemoryInBackground } from '../../src/utils/gemini/memory'
 
 // Mock google/genai
@@ -54,7 +60,7 @@ describe('Memory System Utilities', () => {
   describe('Long-term Memory Database Functions', () => {
     test('should set and get user memory profile correctly', () => {
       const testUserId = 'test_user_mem_123'
-      
+
       // Default should be empty string
       expect(getUserMemory(testUserId)).toBe('')
 
@@ -90,7 +96,12 @@ describe('Memory System Utilities', () => {
   })
 
   describe('Hybrid Short-term Context Calculation', () => {
-    const mockMsg = (id: string, content: string, createdTimestamp: number, referenceId?: string) => {
+    const mockMsg = (
+      id: string,
+      content: string,
+      createdTimestamp: number,
+      referenceId?: string
+    ) => {
       return {
         id,
         content,
@@ -121,7 +132,7 @@ describe('Memory System Utilities', () => {
         ['msg_other', msgOther],
         ['msg_parent1', msgParent1]
       ])
-      
+
       msgCurr.channel.messages.fetch = vi.fn().mockImplementation((options: any) => {
         if (typeof options === 'object' && options.before === 'msg_curr') {
           return Promise.resolve(mockChannelMessages)
@@ -144,24 +155,70 @@ describe('Memory System Utilities', () => {
       // Result should contain msgParent2, msgParent1, msgOther, sorted by timestamp
       expect(result.map(m => m.id)).toEqual(['msg_parent2', 'msg_parent1', 'msg_other'])
     })
+
+    test('should return only the routed thread when routing is enabled', async () => {
+      const msgParent = mockMsg('msg_parent', '欣興 6515 的消息', 1_000)
+      const msgOther = mockMsg('msg_other', '美光 MU 的消息', 1_100)
+      const msgCurr = mockMsg('msg_curr', '這個會怎麼影響？', 1_200, 'msg_parent')
+
+      msgCurr.channel.messages.fetch = vi.fn().mockImplementation((options: any) => {
+        if (typeof options === 'object' && options.before === 'msg_curr') {
+          return Promise.resolve(
+            new Map([
+              ['msg_parent', msgParent],
+              ['msg_other', msgOther]
+            ])
+          )
+        }
+        if (options === 'msg_parent') return Promise.resolve(msgParent)
+        return Promise.reject(new Error('Not found'))
+      })
+      msgParent.channel.messages.fetch = msgCurr.channel.messages.fetch
+
+      const result = await getHybridContext(msgCurr, 5, 5, {
+        route: true,
+        currentContent: '這個會怎麼影響？'
+      })
+
+      expect(result.map(m => m.id)).toEqual(['msg_parent'])
+    })
+
+    test('should not use a slash interaction ID as the message history cursor', async () => {
+      const fetch = vi.fn().mockResolvedValue(new Map())
+      const interaction = {
+        id: 'interaction_id',
+        commandName: 'bobo',
+        user: { id: 'user_1' },
+        channel: { messages: { fetch } }
+      } as any
+
+      await getHybridContext(interaction, 5, 5, {
+        route: true,
+        currentContent: '哈囉'
+      })
+
+      expect(fetch).toHaveBeenCalledWith({ limit: 5 })
+    })
   })
 
   describe('Long-term Memory Reflection via Mem0 in Background', () => {
     beforeEach(() => {
       vi.resetAllMocks()
       process.env.GEMINI_API_KEY = 'test_key'
+      mockAdd.mockResolvedValue({ results: [{ id: 'test-memory' }] })
     })
 
     test('should delegate memory addition to Mem0 with correct user scoping', async () => {
       const testUserId = 'test_user_ref_999'
 
-      await updateMemoryInBackground(
+      const outcome = await updateMemoryInBackground(
         testUserId,
         'TestUser',
         'I love cats so much!',
         'Aww cats are great.'
       )
 
+      expect(outcome.status).toBe('stored')
       expect(mockAdd).toHaveBeenCalledTimes(1)
       expect(mockAdd).toHaveBeenCalledWith(
         expect.stringContaining('[發言者 (目標對象)] TestUser: "I love cats so much!"'),
@@ -174,12 +231,7 @@ describe('Memory System Utilities', () => {
       const testUserId = 'test_user_ref_777'
       setUserMemorySetting(testUserId, false)
 
-      await updateMemoryInBackground(
-        testUserId,
-        'TestUser',
-        'I love dogs too.',
-        'Dogs are cool.'
-      )
+      await updateMemoryInBackground(testUserId, 'TestUser', 'I love dogs too.', 'Dogs are cool.')
 
       expect(mockAdd).not.toHaveBeenCalled()
 
@@ -188,4 +240,3 @@ describe('Memory System Utilities', () => {
     })
   })
 })
-

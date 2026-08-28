@@ -28,6 +28,12 @@ describe('SQLite Database Tests', () => {
     const settingsTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
       .get()
+    const conversationEventsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_events'")
+      .get()
+    const memoryRecordsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_records'")
+      .get()
 
     expect(serversTable).toBeDefined()
     expect(serversTable.name).toBe('servers')
@@ -35,6 +41,10 @@ describe('SQLite Database Tests', () => {
     expect(commandsTable.name).toBe('commands')
     expect(settingsTable).toBeDefined()
     expect(settingsTable.name).toBe('settings')
+    expect(conversationEventsTable).toBeDefined()
+    expect(conversationEventsTable.name).toBe('conversation_events')
+    expect(memoryRecordsTable).toBeDefined()
+    expect(memoryRecordsTable.name).toBe('memory_records')
   })
 
   test('should insert and retrieve server', () => {
