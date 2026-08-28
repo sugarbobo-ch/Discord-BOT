@@ -55,9 +55,14 @@ describe('structured caller intent classifier', () => {
     })
   })
 
-  test('only opens the automatic memory gate for stable caller facts', () => {
+  test('only opens the automatic memory gate for substantive caller inputs', () => {
     expect(shouldWriteMemoryCandidate('我喜歡吃拉麵')).toBe(true)
+    expect(shouldWriteMemoryCandidate('原神新角色好抽嗎')).toBe(true)
+    expect(shouldWriteMemoryCandidate('3037 欣興前景如何')).toBe(true)
     expect(shouldWriteMemoryCandidate('6515不是美光')).toBe(false)
     expect(shouldWriteMemoryCandidate('你還記得我住哪裡嗎')).toBe(false)
+    expect(shouldWriteMemoryCandidate('笑死')).toBe(false)
+    expect(shouldWriteMemoryCandidate('哈哈')).toBe(false)
+    expect(shouldWriteMemoryCandidate('好')).toBe(false)
   })
 })

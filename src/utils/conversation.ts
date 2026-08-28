@@ -330,8 +330,9 @@ export function classifyCallerIntent(
 }
 
 /**
- * Gate automatic profile writes. Questions, bot corrections and backchannels
- * are useful conversation events but are not stable user facts.
+ * Gate automatic profile writes.
+ * Skips bot corrections, memory query requests, empty prompts, and trivial single-word backchannels.
+ * Substantive user discussions, topics, interests, and questions sent to Bobo are forwarded to Mem0.
  */
 export function shouldWriteMemoryCandidate(
   content: string,
@@ -345,9 +346,17 @@ export function shouldWriteMemoryCandidate(
     return false
   }
 
-  return /(?:我(?:喜歡|愛|討厭|不喜歡|偏好|住在|來自|叫|是|有|持有|買了|過敏|習慣|通常|平常)|我的(?:偏好|習慣|名字|稱呼|工作|所在地)|\bI\s+(?:like|love|hate|prefer|live|work|own|have)\b)/i.test(
-    content
-  )
+  const trimmed = content.trim()
+  if (!trimmed || trimmed.length <= 2) {
+    return false
+  }
+
+  // Skip pure trivial backchannels/agreements (e.g. "好", "笑死", "真的", "哈哈")
+  if (AGREEMENT_PATTERN.test(trimmed) || BACKCHANNEL_PATTERN.test(trimmed)) {
+    return false
+  }
+
+  return true
 }
 
 function tokenize(content: string): Set<string> {
