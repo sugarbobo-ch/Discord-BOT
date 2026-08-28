@@ -5,8 +5,13 @@ import * as https from 'https'
 import * as fs from 'fs'
 import * as path from 'path'
 
-const customHttpAgent = new http.Agent({ maxHeaderSize: 64 * 1024 })
-const customHttpsAgent = new https.Agent({ maxHeaderSize: 64 * 1024 })
+const customHttpAgent = new http.Agent({
+  maxHeaderSize: 64 * 1024
+} as http.AgentOptions & { maxHeaderSize?: number })
+
+const customHttpsAgent = new https.Agent({
+  maxHeaderSize: 64 * 1024
+} as https.AgentOptions & { maxHeaderSize?: number })
 
 const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey']
