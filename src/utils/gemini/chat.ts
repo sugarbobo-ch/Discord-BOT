@@ -14,7 +14,8 @@ import {
   lookupStockTicker,
   searchStockTickerWithYahoo,
   getTaiwanStockName,
-  getStockSlogan
+  getStockSlogan,
+  extractExplicitTickerQueries
 } from '../stock'
 import {
   isPotentialStockQuery,
@@ -144,9 +145,61 @@ export const chatWithBobo = async (
         }
         const nameMap = new Map<string, string>()
         const tickers: string[] = []
+
+        // A ticker explicitly written by the user is stronger evidence than an AI
+        // classification. Resolve it independently so a hallucinated company name
+        // cannot redirect the quote lookup to another security.
+        const explicitTickerQueries = extractExplicitTickerQueries(prompt)
+        for (const explicitQuery of explicitTickerQueries) {
+          let resolvedTicker = await lookupStockTicker(explicitQuery)
+          let resolvedName: string | null = null
+
+          if (!resolvedTicker) {
+            const yahooResult = await searchStockTickerWithYahoo(explicitQuery)
+            if (yahooResult?.symbol) {
+              resolvedTicker = yahooResult.symbol.toUpperCase()
+              resolvedName = yahooResult.name || null
+            }
+          }
+
+          // getStockPrice performs the authoritative TW -> TWO fallback itself. If
+          // autocomplete is unavailable, keep the user's literal code instead of
+          // substituting an AI guess.
+          if (!resolvedTicker && /^\d{4,6}[A-Z]?$/.test(explicitQuery)) {
+            resolvedTicker = explicitQuery
+          }
+
+          if (resolvedTicker) {
+            const normalizedTicker = resolvedTicker.toUpperCase()
+            const explicitBase = explicitQuery.split('.')[0]
+            const aiLabel = analysis.stocks.find(stock => {
+              const aiTickerBase = stock.ticker?.trim().toUpperCase().split('.')[0]
+              return aiTickerBase === explicitBase
+            })?.name
+            if (!tickers.includes(normalizedTicker)) tickers.push(normalizedTicker)
+            nameMap.set(
+              normalizedTicker,
+              resolvedName || getTaiwanStockName(normalizedTicker) || aiLabel || explicitQuery
+            )
+          }
+        }
+
         for (const stock of analysis.stocks) {
           const stockNameClean = stock.name.trim()
           const stockNameCleaned = cleanStockNameForSearch(stockNameClean)
+
+          // When an explicit ticker exists, accept additional AI-detected securities
+          // only if their name/ticker is actually present in the user's own message.
+          // This rejects mappings invented from unrelated channel history.
+          if (explicitTickerQueries.length > 0) {
+            const nameWasWritten =
+              stockNameCleaned.length > 0 &&
+              prompt.toUpperCase().includes(stockNameCleaned.toUpperCase())
+            const tickerWasWritten =
+              stock.ticker?.trim().length > 0 &&
+              prompt.toUpperCase().includes(stock.ticker.trim().toUpperCase())
+            if (!nameWasWritten && !tickerWasWritten) continue
+          }
 
           // 1. 優先使用本地快取/對照表進行精確查詢
           let resolvedTicker = await lookupStockTicker(stockNameCleaned)
@@ -166,12 +219,11 @@ export const chatWithBobo = async (
             }
           }
 
-          // 3. 若皆失敗，最後才使用 AI 產生的 guessed ticker 作為備用
-          const normalizedTicker =
-            resolvedTicker || (stock.ticker ? stock.ticker.trim().toUpperCase() : null)
+          // Never send an unverified AI-guessed ticker to the market data API.
+          const normalizedTicker = resolvedTicker
 
           if (normalizedTicker) {
-            tickers.push(normalizedTicker)
+            if (!tickers.includes(normalizedTicker)) tickers.push(normalizedTicker)
             nameMap.set(normalizedTicker, stock.name)
           }
         }

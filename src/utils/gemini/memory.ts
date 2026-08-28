@@ -66,16 +66,16 @@ export async function updateMemoryInBackground(
   targetUserId: string,
   targetUserName: string,
   userMessage: string,
-  aiResponse: string
+  _aiResponse: string
 ): Promise<void> {
   // 檢查使用者是否開啟記憶功能，若關閉則不進行長期記憶更新
   if (!getUserMemorySetting(targetUserId)) {
     return
   }
 
-  // 建立對話內容 (僅包含發言者與AI的回覆，確保別人的垃圾話不會污染 A 網友的專屬記憶庫)
-  let dialogueContext = `[發言者 (目標對象)] ${targetUserName}: "${userMessage}"\n`
-  dialogueContext += `[AI 回覆]: "${aiResponse}"`
+  // Only user-authored statements may become user memory. Model replies can contain
+  // mistakes; feeding them back into Mem0 turns one hallucination into persistent data.
+  const dialogueContext = `[發言者 (目標對象)] ${targetUserName}: "${userMessage}"`
 
   try {
     await executeMemoryOp(memory => memory.add(dialogueContext, { userId: targetUserId }))

@@ -609,6 +609,44 @@ export function extractTickers(text: string): string[] {
 }
 
 /**
+ * Extract ticker-like values that the user explicitly identified as the query target.
+ * This is intentionally stricter than extractTickers: arbitrary four-digit values may
+ * be years, prices, or quantities and must not override a stock selected by the user.
+ */
+export function extractExplicitTickerQueries(text: string): string[] {
+  const normalized = text
+    .trim()
+    .replace(/^(?:!|！)?bobo\s*/i, '')
+    .replace(/^波波\s*[,，:：]?\s*/i, '')
+  const results: string[] = []
+  const add = (value: string) => {
+    const upper = value.toUpperCase()
+    if (!results.includes(upper)) results.push(upper)
+  }
+
+  for (const match of normalized.matchAll(/\b\d{4,6}[A-Z]?\.(?:TW|TWO)\b/gi)) {
+    add(match[0])
+  }
+
+  const leadingMatch = normalized.match(/^(\d{4,6}[A-Z]?)(?=\b|[^A-Za-z0-9])/i)
+  if (leadingMatch) add(leadingMatch[1])
+
+  for (const match of normalized.matchAll(
+    /(?:股票|個股|代號|ticker)\s*[:：]?\s*(\d{4,6}[A-Z]?)(?=\b|[^A-Za-z0-9])/gi
+  )) {
+    add(match[1])
+  }
+
+  for (const match of normalized.matchAll(
+    /(\d{4,6}[A-Z]?)(?=\s*(?:的)?(?:股票|個股|股價|行情))/gi
+  )) {
+    add(match[1])
+  }
+
+  return results
+}
+
+/**
  * 用於單元測試清除快取
  */
 export function clearStockCache(): void {

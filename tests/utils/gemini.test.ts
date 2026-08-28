@@ -16,7 +16,11 @@ import {
   typoCooldownMap,
   chatCooldownMap
 } from '../../src/utils/gemini'
-import { getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
+import {
+  clearStockCache,
+  getStockPrice,
+  searchStockTickerWithYahoo
+} from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
 import auth from '../../config/auth.json'
 
@@ -60,6 +64,7 @@ describe('Gemini Utility Tests', () => {
     } as any)
     typoCooldownMap.clear()
     chatCooldownMap.clear()
+    clearStockCache()
   })
 
   test('checkImageNSFW should return false and reason when image is safe', async () => {
@@ -538,6 +543,46 @@ describe('Gemini Utility Tests', () => {
         ])
       })
     )
+  })
+
+  test('chatWithBobo should prefer an explicit Taiwan ticker over a hallucinated AI mapping', async () => {
+    vi.mocked(searchStockTickerWithYahoo).mockImplementation(async query => {
+      if (query === '6515') {
+        return { symbol: '6515.TW', name: '欣興' }
+      }
+      return null
+    })
+
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "stocks": [{"name": "美光", "ticker": "MU"}]}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '6515 是欣興。' }] } }]
+      })
+
+    const reply = await chatWithBobo(
+      '6515的2026目標價多少，會因為輝達財報好有爆發性成長嗎',
+      'user_explicit_ticker_test'
+    )
+
+    expect(reply).toBe('6515 是欣興。')
+    expect(searchStockTickerWithYahoo).toHaveBeenCalledWith('6515')
+
+    const finalRequest = mockGenerateContent.mock.calls[1][0]
+    const serializedRequest = JSON.stringify(finalRequest)
+    expect(serializedRequest).toContain('股票名稱: 欣興 (代號: 6515.TW)')
+    expect(serializedRequest).not.toContain('(代號: MU)')
   })
 
   test('chatWithBobo should clean stock names and match them correctly', async () => {

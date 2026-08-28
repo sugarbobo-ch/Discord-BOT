@@ -167,6 +167,7 @@ describe('Memory System Utilities', () => {
         expect.stringContaining('[發言者 (目標對象)] TestUser: "I love cats so much!"'),
         { userId: testUserId }
       )
+      expect(mockAdd.mock.calls[0][0]).not.toContain('Aww cats are great.')
     })
 
     test('should not run reflection if user memory setting is disabled', async () => {
