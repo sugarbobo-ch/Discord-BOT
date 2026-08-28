@@ -1,7 +1,12 @@
 import YahooFinance from 'yahoo-finance2'
 import axios from 'axios'
+import * as http from 'http'
+import * as https from 'https'
 import * as fs from 'fs'
 import * as path from 'path'
+
+const customHttpAgent = new http.Agent({ maxHeaderSize: 64 * 1024 })
+const customHttpsAgent = new https.Agent({ maxHeaderSize: 64 * 1024 })
 
 const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey']
@@ -842,10 +847,12 @@ export async function fetchStockNameFromYahooPage(symbol: string): Promise<strin
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
+      httpAgent: customHttpAgent,
+      httpsAgent: customHttpsAgent,
       timeout: 5000
     })
 
-    const titleMatch = res.data.match(/<title>([\s\S]*?)<\/title>/i)
+    const titleMatch = res.data && typeof res.data === 'string' ? res.data.match(/<title>([\s\S]*?)<\/title>/i) : null
     if (titleMatch && titleMatch[1]) {
       const title = titleMatch[1].trim()
       const rawName = title.split('(')[0].trim()
@@ -854,10 +861,20 @@ export async function fetchStockNameFromYahooPage(symbol: string): Promise<strin
       }
     }
   } catch (error: any) {
-    console.error(
-      `[fetchStockNameFromYahooPage Error] Failed to fetch name from page for ${symbol}:`,
-      error.message
-    )
+    // 若網頁爬取失敗（例如 Header 溢位或連線異常），嘗試從 Yahoo Autocomplete API 取得
+    try {
+      const autoResult = await searchStockTickerWithYahoo(symbol)
+      if (autoResult?.name) {
+        return autoResult.name.replace(/&amp;/g, '&').trim()
+      }
+    } catch {}
+
+    if (!error.message?.includes('Header overflow') && !error.message?.includes('Network error')) {
+      console.error(
+        `[fetchStockNameFromYahooPage Error] Failed to fetch name from page for ${symbol}:`,
+        error.message
+      )
+    }
   }
   return null
 }
