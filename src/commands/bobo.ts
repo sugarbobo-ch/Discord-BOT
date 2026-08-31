@@ -771,9 +771,8 @@ export class BoboCommand implements Command {
         )
       }
 
-      const signedReply = reply + BOBO_DIALOGUE_SIGNATURE
-
-      if (signedReply.length <= 2000) {
+      if (reply.length <= 1900) {
+        const signedReply = reply + BOBO_DIALOGUE_SIGNATURE
         if (statusMessage) {
           await safeEditContext(statusMessage, ctx, signedReply)
         } else {
@@ -781,10 +780,11 @@ export class BoboCommand implements Command {
         }
       } else {
         const CHUNK_SIZE = 1900
-        const chunks: string[] = []
-        for (let i = 0; i < signedReply.length; i += CHUNK_SIZE) {
-          chunks.push(signedReply.substring(i, i + CHUNK_SIZE))
+        const rawChunks: string[] = []
+        for (let i = 0; i < reply.length; i += CHUNK_SIZE) {
+          rawChunks.push(reply.substring(i, i + CHUNK_SIZE))
         }
+        const chunks = rawChunks.map(chunk => chunk + BOBO_DIALOGUE_SIGNATURE)
 
         if (chunks.length > 0) {
           let firstMsg: any

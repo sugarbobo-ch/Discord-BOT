@@ -44,7 +44,7 @@ export function extractGoogleSearchSources(response: any): GoogleSearchSource[] 
 export function appendGoogleSearchSources(
   reply: string,
   response: any,
-  maxSources = 5
+  maxSources = 3
 ): string {
   const sources = extractGoogleSearchSources(response).slice(0, maxSources)
   if (sources.length === 0) return reply
@@ -53,6 +53,23 @@ export function appendGoogleSearchSources(
   const unreferencedSources = sources.filter(s => !reply.includes(s.url))
   if (unreferencedSources.length === 0) return reply
 
-  const rendered = unreferencedSources.map(source => `- [${source.title}](${source.url})`).join('\n')
-  return `${reply}\n\n**來源**\n${rendered}`
+  const renderedLines: string[] = []
+  let currentLen = reply.length + '\n\n**來源**\n'.length
+
+  for (const source of unreferencedSources) {
+    const fullLine = `- [${source.title}](${source.url})`
+    if (currentLen + fullLine.length + 1 <= 1900) {
+      renderedLines.push(fullLine)
+      currentLen += fullLine.length + 1
+    } else {
+      const shortLine = `- ${source.title}`
+      if (currentLen + shortLine.length + 1 <= 1900) {
+        renderedLines.push(shortLine)
+        currentLen += shortLine.length + 1
+      }
+    }
+  }
+
+  if (renderedLines.length === 0) return reply
+  return `${reply}\n\n**來源**\n${renderedLines.join('\n')}`
 }
