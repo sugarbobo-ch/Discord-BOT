@@ -149,6 +149,19 @@ describe('Gemini Utility Tests', () => {
     expect(result.reason).toBe('包含敏感內容')
   })
 
+  test('cleanLatexSymbols should sanitize nested and malformed markdown links', () => {
+    const raw =
+      '來源 [facebook.com]([https://vertexaisearch.cloud.google.com/grounding-api-redirect/ABC](https://vertexaisearch.cloud.google.com/grounding-api-redirect/ABC))\n' +
+      '還有 [udn.com]([https://udn.com/news/123]) 以及 [[ctee.com.tw](https://ctee.com.tw/456)]'
+
+    const cleaned = cleanLatexSymbols(raw)
+
+    expect(cleaned).toContain('[facebook.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/ABC)')
+    expect(cleaned).toContain('[udn.com](https://udn.com/news/123)')
+    expect(cleaned).toContain('[ctee.com.tw](https://ctee.com.tw/456)')
+    expect(cleaned).not.toContain('([https')
+  })
+
   test('chatWithBobo should return text from API response', async () => {
     mockGenerateContent.mockResolvedValue({
       candidates: [

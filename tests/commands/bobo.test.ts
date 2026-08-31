@@ -96,6 +96,12 @@ describe('BoboCommand Reply Tests', () => {
       channel: {
         isTextBased: () => true,
         sendTyping: vi.fn().mockResolvedValue(true),
+        send: vi.fn().mockImplementation(options => {
+          if (options && options.content === '\u200B') {
+            return Promise.resolve({ delete: vi.fn().mockResolvedValue(true) })
+          }
+          return Promise.resolve({ edit: vi.fn().mockResolvedValue(true) })
+        }),
         messages: {
           fetch: vi.fn().mockImplementation(options => {
             if (typeof options === 'string') {
@@ -295,6 +301,22 @@ describe('BoboCommand Reply Tests', () => {
 
     expect(mockSend).toHaveBeenCalledWith({ content: '\u200B' })
     expect(mockDelete).toHaveBeenCalled()
+  })
+
+  test('should safely chunk and send messages exceeding 2000 characters without throwing', async () => {
+    const longReply = 'A'.repeat(3000)
+    vi.mocked(chatWithBobo).mockResolvedValueOnce(longReply)
+
+    const firstMsgMock = {
+      channel: {
+        send: vi.fn().mockResolvedValue(true)
+      },
+      edit: vi.fn().mockResolvedValue(true)
+    }
+    mockMessage.reply = vi.fn().mockResolvedValue(firstMsgMock)
+
+    await expect(boboCommand.execute(mockMessage, ['詳細分析'])).resolves.not.toThrow()
+    expect(firstMsgMock.channel.send).toHaveBeenCalled()
   })
 
   describe('executeSlash (slash commands)', () => {

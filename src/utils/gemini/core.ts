@@ -239,6 +239,14 @@ export function cleanLatexSymbols(text: string): string {
   // 4. Discord 不支援四級（含）以上的標題，將其轉換為三級標題 (###)
   cleaned = cleaned.replace(/^(#{4,6})\s+(.+)$/gm, '### $2')
 
+  // 5. 修復模型偶爾產生的畸形/巢狀 Markdown 連結，如 [domain.com]([https://...](https://...)) 或 [Title]([URL])
+  cleaned = cleaned.replace(
+    /\[([^\]\n]+)\]\(\s*\[\s*(https?:\/\/[^\]\s]+)\s*\](?:\(\s*https?:\/\/[^\)\s]+\s*\))?\s*\)/g,
+    '[$1]($2)'
+  )
+  cleaned = cleaned.replace(/\[\s*(\[[^\]\n]+\]\([^\)\n]+\))\s*\]/g, '$1')
+  cleaned = cleaned.replace(/\[([^\]\n]+)\]\(\s*\(\s*(https?:\/\/[^\)\s]+)\s*\)\s*\)/g, '[$1]($2)')
+
   return cleaned
 }
 

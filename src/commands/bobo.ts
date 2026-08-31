@@ -793,10 +793,12 @@ export class BoboCommand implements Command {
           } else {
             firstMsg = await safeReplyContext(ctx, chunks[0])
           }
-          const replyTarget = (firstMsg && 'channel' in firstMsg) ? firstMsg : ctx.channel
-          if (replyTarget) {
+          const targetChannel = (firstMsg && 'channel' in firstMsg && firstMsg.channel)
+            ? firstMsg.channel
+            : ctx.channel
+          if (targetChannel && typeof (targetChannel as any).send === 'function') {
             for (let i = 1; i < chunks.length; i++) {
-              await (replyTarget as any).send(chunks[i]).catch((err: any) => {
+              await (targetChannel as any).send(chunks[i]).catch((err: any) => {
                 console.error(`Failed to send chunk ${i}:`, err.message)
               })
             }
