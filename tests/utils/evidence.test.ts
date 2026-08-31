@@ -39,6 +39,35 @@ describe('evidence blocks', () => {
     ).toBe(true)
   })
 
+  test('does not misclassify moving averages, volume, and timestamps as current-price claims', () => {
+    const result = validateGroundedResponse(
+      '欣興目前股價為 1200 元，今日收盤價跌破 60 日均線（60MA），最新報價時間為 09:51，成交量 951 張，跌幅 5%。',
+      evidence,
+      {
+        requireCurrentPriceEvidence: true,
+        verifiedNumbers: ['1200']
+      }
+    )
+
+    expect(result.valid).toBe(true)
+    expect(result.violations).toHaveLength(0)
+  })
+
+  test('passes real-world analyst scenario for 欣興 with 60 MA and 951 volume', () => {
+    const report =
+      '### **【個股緊急診斷報告：欣興 (3037.TW)】**\n' +
+      '針對您持有的欣興（3037.TW）目前遭遇一字鎖跌停的劇烈波動，我已排除市場雜訊，將最新檢調事件、公司澄清以及技術面走勢進行綜合分析。\n' +
+      '目前股價為 110.5 元，今日收盤價跌破 60 日均線（季線），成交量約 951 張，最新報價時間 09:51。'
+
+    const result = validateGroundedResponse(report, evidence, {
+      requireCurrentPriceEvidence: true,
+      verifiedNumbers: ['110.5', '3037']
+    })
+
+    expect(result.valid).toBe(true)
+    expect(result.violations).toHaveLength(0)
+  })
+
   test('rejects invented current-price claims and unknown citations', () => {
     const result = validateGroundedResponse(
       '欣興目前股價是 9999 元。[sourceId: missing]',
@@ -55,3 +84,4 @@ describe('evidence blocks', () => {
     )
   })
 })
+

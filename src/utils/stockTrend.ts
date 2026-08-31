@@ -147,9 +147,14 @@ export function calculateStockTrend(
 export async function getStockTrend(
   ticker: string,
   periodDays = 120
-): Promise<StockTrendSnapshot> {
+): Promise<StockTrendSnapshot | null> {
   // Fetch extra calendar days so weekends and market holidays still leave
   // enough trading sessions for the 60-day moving average.
-  const quotes = await getStockChartData(ticker, Math.max(periodDays, 90) * 2)
-  return calculateStockTrend(ticker, quotes, periodDays)
+  try {
+    const quotes = await getStockChartData(ticker, Math.max(periodDays, 90) * 2)
+    if (!quotes || quotes.length === 0) return null
+    return calculateStockTrend(ticker, quotes, periodDays)
+  } catch {
+    return null
+  }
 }

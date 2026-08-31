@@ -4,10 +4,7 @@ import {
   shouldWriteMemoryCandidate,
   type ConversationMessage
 } from '../../src/utils/conversation'
-import {
-  extractDeterministicStockEntities,
-  validateDeterministicStockClaims
-} from '../../src/utils/stock'
+import { validateGroundedResponse, type EvidenceBlock } from '../../src/utils/evidence'
 
 export interface MvpGoldenCase {
   id: string
@@ -151,14 +148,27 @@ for (const [index, item] of intentCases.entries()) {
   })
 }
 
+const dummyEvidence: EvidenceBlock[] = [
+  {
+    sourceId: 'stock-tool-1',
+    speakerId: 'system',
+    threadId: 'thread:1',
+    sourceType: 'official_api',
+    status: 'verified',
+    timestamp: 0,
+    content: '欣興 3037 現價 110.5'
+  }
+]
+
 for (let index = 0; index < 8; index++) {
   cases.push({
     id: `grounding-valid-${index + 1}`,
     category: 'grounding',
     run: () =>
-      validateDeterministicStockClaims(
-        index % 2 === 0 ? '6515 是欣興。' : '6515 是欣興；MU 是美光，兩者不同。',
-        extractDeterministicStockEntities('6515')
+      validateGroundedResponse(
+        index % 2 === 0 ? '欣興目前股價為 110.5 元。' : '欣興目前收盤價跌破 60 日均線，現價 110.5 元。',
+        dummyEvidence,
+        { requireCurrentPriceEvidence: true, verifiedNumbers: ['110.5', '3037'] }
       ).valid
   })
 }
@@ -168,9 +178,10 @@ for (let index = 0; index < 7; index++) {
     id: `grounding-invalid-${index + 1}`,
     category: 'grounding',
     run: () =>
-      !validateDeterministicStockClaims(
-        index % 2 === 0 ? '6515 是美光 MU。' : '6515（美商美光）的目標價。',
-        extractDeterministicStockEntities('6515')
+      !validateGroundedResponse(
+        index % 2 === 0 ? '欣興目前股價為 9999 元。' : '欣興最新報價為 5000 元。',
+        dummyEvidence,
+        { requireCurrentPriceEvidence: true, verifiedNumbers: ['110.5', '3037'] }
       ).valid
   })
 }

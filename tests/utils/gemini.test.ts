@@ -17,7 +17,12 @@ import {
   typoCooldownMap,
   chatCooldownMap
 } from '../../src/utils/gemini'
-import { clearStockCache, getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
+import {
+  clearStockCache,
+  getStockPrice,
+  searchStockTickerWithYahoo,
+  taiwanStockMap
+} from '../../src/utils/stock'
 import { getStockTrend } from '../../src/utils/stockTrend'
 import { researchRecentStockEvents } from '../../src/utils/gemini/stockResearch'
 import { assessConversationComplexity } from '../../src/utils/gemini/complexityPlanner'
@@ -581,12 +586,8 @@ describe('Gemini Utility Tests', () => {
   })
 
   test('chatWithBobo should prefer an explicit Taiwan ticker over a hallucinated AI mapping', async () => {
-    vi.mocked(searchStockTickerWithYahoo).mockImplementation(async query => {
-      if (query === '3037') {
-        return { symbol: '3037.TW', name: '欣興' }
-      }
-      return null
-    })
+    taiwanStockMap['3037'] = '3037.TW'
+    taiwanStockMap['欣興'] = '3037.TW'
 
     mockGenerateContent
       .mockResolvedValueOnce({
@@ -620,48 +621,7 @@ describe('Gemini Utility Tests', () => {
     expect(serializedRequest).not.toContain('(代號: MU)')
   })
 
-  test('chatWithBobo should keep the deterministic entity lock during a correction', async () => {
-    mockGenerateContent.mockResolvedValueOnce({
-      candidates: [{ content: { parts: [{ text: '對，3037 是欣興，不是美光。' }] } }]
-    })
 
-    const reply = await chatWithBobo('3037不是美光', 'user_entity_correction_test')
-
-    expect(reply).toBe('對，3037 是欣興，不是美光。')
-    const request = mockGenerateContent.mock.calls[0][0]
-    const serializedRequest = JSON.stringify(request)
-    expect(serializedRequest).toContain('3037 -> 欣興')
-    expect(serializedRequest).toContain('TWSE:3037')
-  })
-
-  test('chatWithBobo should repair a response that maps 3037 to MU', async () => {
-    mockGenerateContent
-      .mockResolvedValueOnce({
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: '{"isMentioningStock": true, "stocks": [{"name": "美光", "ticker": "MU"}]}'
-                }
-              ]
-            }
-          }
-        ]
-      })
-      .mockResolvedValueOnce({
-        candidates: [{ content: { parts: [{ text: '3037 (美商美光 MU) 的目標價分析。' }] } }]
-      })
-      .mockResolvedValueOnce({
-        candidates: [{ content: { parts: [{ text: '3037 是欣興，以下分析以欣興為準。' }] } }]
-      })
-
-    const reply = await chatWithBobo('3037的目標價多少？', 'user_entity_repair_test')
-
-    expect(reply).toBe('3037 是欣興，以下分析以欣興為準。')
-    expect(mockGenerateContent).toHaveBeenCalledTimes(3)
-    expect(mockGenerateContent.mock.calls[2][0].config.thinkingConfig.thinkingLevel).toBe('HIGH')
-  })
 
   test('chatWithBobo should repair an invented current stock price', async () => {
     mockGenerateContent

@@ -13,11 +13,7 @@ import {
   searchStockTickerWithYahoo,
   getTaiwanStockName,
   getStockSlogan,
-  extractExplicitTickerQueries,
-  extractDeterministicStockEntities,
-  resolveDeterministicStockEntity,
-  validateDeterministicStockClaims,
-  type DeterministicStockEntity
+  extractExplicitTickerQueries
 } from '../stock'
 import {
   isPotentialStockQuery,
@@ -99,23 +95,26 @@ export interface ChatConversationContext {
   intent?: CallerIntentAnalysis
 }
 
-async function repairDeterministicEntityClaims(
+async function repairGroundedResponse(
   systemPrompt: string,
   channelHistoryContext: string | undefined,
   prompt: string,
   previousReply: string,
-  entities: readonly DeterministicStockEntity[],
-  violations: readonly string[]
+  violations: readonly string[],
+  stockContext?: string
 ): Promise<string> {
-  const mappings = entities
-    .map(entity => `${entity.surface} -> ${entity.canonicalName} (${entity.ticker})`)
-    .join('；')
   const repairParts: any[] = [
     {
       text:
-        `${systemPrompt}\n\n【回答一致性修正】上一版回答有以下未通過的檢查：${violations.join('；') || '未通過 evidence 檢查'}。請重新回答當前呼叫者的問題；只能使用以下鎖定對照：${mappings || '無額外代號鎖定'}，以及系統提供的 verified evidence。不得將任何鎖定代號對應到衝突公司，也不要提及這次修正流程。`
+        `${systemPrompt}\n\n【回答依據性修正】上一版回答有以下未通過的檢查：${violations.join('；') || '未通過 evidence 檢查'}。請重新回答當前呼叫者的問題；若提及最新價格、收盤價、開盤價等現價數據，必須完全與提供的真實數據對照表相符，不得捏造未驗證之價格，也不要提及這次修正流程。`
     }
   ]
+
+  if (stockContext) {
+    repairParts.push({
+      text: stockContext
+    })
+  }
 
   if (channelHistoryContext) {
     repairParts.push({
@@ -137,26 +136,6 @@ async function repairDeterministicEntityClaims(
     signals: { validationFailed: true }
   })
   return getResponseText(response)
-}
-
-function deterministicEntityFallback(entities: readonly DeterministicStockEntity[]): string {
-  if (entities.length === 0) {
-    return '目前無法用已驗證資料確認這項即時資訊，請稍後再試。'
-  }
-  const mappings = entities
-    .map(entity => `${entity.surface} 是 ${entity.canonicalName}（${entity.ticker}）`)
-    .join('；')
-  return `更正：${mappings}。目前不會把這些代號對應成其他公司。`
-}
-
-function validationFailureFallback(
-  entities: readonly DeterministicStockEntity[],
-  hasEntityViolations: boolean
-): string {
-  if (!hasEntityViolations) {
-    return '目前無法用已驗證資料確認這項即時資訊，請稍後再試。'
-  }
-  return deterministicEntityFallback(entities)
 }
 
 /**
@@ -213,7 +192,6 @@ export const chatWithBobo = async (
   let stockNeedsTrendAnalysis = false
   let stockNeedsRecentResearch = false
   const callerIntent = conversationContext?.intent || classifyCallerIntent(prompt)
-  const deterministicEntities = extractDeterministicStockEntities(prompt)
 
   console.log(
     `[Caller Intent] User: ${authorName || userId} (${userId}) | ${JSON.stringify(callerIntent)}`
@@ -235,28 +213,18 @@ export const chatWithBobo = async (
         `[AI Chat Path Check] detectStocksWithAI returned: isMentioningStock = ${analysis.isMentioningStock}, stocks = ${JSON.stringify(analysis.stocks)}`
       )
 
-      // A known literal entity is sufficient to enter the stock path even if
-      // Gemini misclassifies the surrounding sentence.
-      if (
-        (analysis.isMentioningStock && analysis.stocks.length > 0) ||
-        deterministicEntities.length > 0
-      ) {
+      if (analysis.isMentioningStock && analysis.stocks.length > 0) {
         if (onStatusUpdate) {
           await onStatusUpdate('📊 正在比對證交所資料庫以解析股票名稱或代碼... 📂')
         }
         const nameMap = new Map<string, string>()
         const tickers: string[] = []
 
-        // A ticker explicitly written by the user is stronger evidence than an AI
-        // classification. Resolve it independently so a hallucinated company name
-        // cannot redirect the quote lookup to another security.
         for (const explicitQuery of explicitTickerQueries) {
-          const deterministicEntity = resolveDeterministicStockEntity(explicitQuery)
-          let resolvedTicker =
-            deterministicEntity?.ticker || (await lookupStockTicker(explicitQuery))
-          let resolvedName: string | null = deterministicEntity?.canonicalName || null
+          let resolvedTicker = await lookupStockTicker(explicitQuery)
+          let resolvedName: string | null = null
 
-          if (!resolvedTicker && !deterministicEntity) {
+          if (!resolvedTicker) {
             const yahooResult = await searchStockTickerWithYahoo(explicitQuery)
             if (yahooResult?.symbol) {
               resolvedTicker = yahooResult.symbol.toUpperCase()
@@ -264,9 +232,6 @@ export const chatWithBobo = async (
             }
           }
 
-          // getStockPrice performs the authoritative TW -> TWO fallback itself. If
-          // autocomplete is unavailable, keep the user's literal code instead of
-          // substituting an AI guess.
           if (!resolvedTicker && /^\d{4,6}[A-Z]?$/.test(explicitQuery)) {
             resolvedTicker = explicitQuery
           }
@@ -290,19 +255,6 @@ export const chatWithBobo = async (
           const stockNameClean = stock.name.trim()
           const stockNameCleaned = cleanStockNameForSearch(stockNameClean)
 
-          // If Gemini attached a different company name to a deterministic
-          // literal ticker (for example `6515 -> 美光`), the literal mapping has
-          // already been resolved above and the model-labelled row is discarded.
-          const deterministicTickerMatch = deterministicEntities.some(entity => {
-            const entityBase = entity.ticker.split('.')[0].toUpperCase()
-            const stockBase = stock.ticker?.trim().toUpperCase().split('.')[0]
-            return stockBase === entityBase
-          })
-          if (deterministicTickerMatch) continue
-
-          // When an explicit ticker exists, accept additional AI-detected securities
-          // only if their name/ticker is actually present in the user's own message.
-          // This rejects mappings invented from unrelated channel history.
           if (explicitTickerQueries.length > 0) {
             const nameWasWritten =
               stockNameCleaned.length > 0 &&
@@ -313,10 +265,8 @@ export const chatWithBobo = async (
             if (!nameWasWritten && !tickerWasWritten) continue
           }
 
-          // 1. 優先使用本地快取/對照表進行精確查詢
           let resolvedTicker = await lookupStockTicker(stockNameCleaned)
 
-          // 2. 若本地找不到，向 Yahoo 財經搜尋確認與修正
           if (!resolvedTicker) {
             const yahooResult = await searchStockTickerWithYahoo(stockNameCleaned)
             if (yahooResult && yahooResult.symbol) {
@@ -331,21 +281,12 @@ export const chatWithBobo = async (
             }
           }
 
-          // Never send an unverified AI-guessed ticker to the market data API.
           const normalizedTicker = resolvedTicker
 
           if (normalizedTicker) {
             if (!tickers.includes(normalizedTicker)) tickers.push(normalizedTicker)
             nameMap.set(normalizedTicker, stock.name)
           }
-        }
-
-        // Re-apply the locks after processing model-detected securities. This
-        // keeps both the market lookup and the displayed company name canonical.
-        for (const entity of deterministicEntities) {
-          const normalizedTicker = entity.ticker.toUpperCase()
-          if (!tickers.includes(normalizedTicker)) tickers.push(normalizedTicker)
-          nameMap.set(normalizedTicker, entity.canonicalName)
         }
 
         if (tickers.length > 0) {
@@ -435,9 +376,23 @@ export const chatWithBobo = async (
     }
   }
 
+  const isCasualGreeting =
+    (callerIntent.intent === 'casual_chat' &&
+      (!callerIntent.entityKeys || callerIntent.entityKeys.length === 0) &&
+      prompt.trim().length <= 10) ||
+    /^(?:你好|您好|早安|午安|晚安|哈囉|嗨|嗨嗨|在嗎|謝謝|感謝|多謝|掰掰|再見|安安|hi|hello|hey|thanks|thank you|xd+|哈哈+)[!！?？~～\s]*$/i.test(
+      prompt.trim()
+    )
+
   const conversationComplexity = isStockQuery
     ? null
-    : await assessConversationComplexity(prompt)
+    : isCasualGreeting
+      ? {
+          complexity: 'simple' as const,
+          needsMultipleSources: false,
+          reasonCategory: 'casual_greeting_fast_path'
+        }
+      : await assessConversationComplexity(prompt)
 
   let userDistinctionPrompt = ''
   if (authorName) {
@@ -446,7 +401,9 @@ export const chatWithBobo = async (
 
   const isMemoryEnabled = getUserMemorySetting(userId)
   let userLongTermMemory = ''
-  if (isMemoryEnabled) {
+  const shouldSkipMemorySearch = isCasualGreeting && callerIntent.intent !== 'ask_memory'
+
+  if (isMemoryEnabled && !shouldSkipMemorySearch) {
     try {
       const memoryQuery = `${callerIntent.intent} ${prompt}`.trim()
       const threadScopedMemory =
@@ -480,16 +437,6 @@ export const chatWithBobo = async (
     memoryPrompt = `\n\n【關於當前說話者(${authorName || userId})的已知長期記憶與個性特徵】：\n${userLongTermMemory}\n請在對話中自然且適當地運用這些背景知識，但「不要」刻意、生硬地對使用者複述這些記憶條目。`
   }
   const callerIntentPrompt = `\n\n【當前呼叫者的結構化意圖】\n${JSON.stringify(callerIntent)}\n這是由規則根據當前呼叫者訊息整理出的路由訊號；請只用它理解呼叫者意圖，不要把其他參與者的訊息當成呼叫者意圖，也不要自行改寫其中的 entityKeys。`
-  const deterministicEntityPrompt = deterministicEntities.length
-    ? `\n\n【確定性實體鎖定】\n${deterministicEntities
-        .map(
-          entity =>
-            `- ${entity.surface} -> ${entity.canonicalName} (${entity.canonicalId}, Yahoo 代號: ${entity.ticker})`
-        )
-        .join(
-          '\n'
-        )}\n以上對照來自離線股票代號資料，優先級高於頻道聊天內容、長期記憶與模型猜測；若任何上下文出現不同公司名稱，請以此對照為準。`
-    : ''
   const webSearchPolicyPrompt = isStockQuery
     ? ''
     : '\n\n【網路搜尋原則】\n你可以使用 Google Search。請根據使用者完整語意自行判斷是否需要搜尋：凡是可能隨時間改變、你不確定、使用者要求查證或需要可追溯來源的事實，應先搜尋再回答；穩定知識、純創作、翻譯、改寫與一般閒聊不必搜尋。若使用者明確要求搜尋或不要搜尋，遵從該要求。搜尋後只根據實際取得的來源作答，區分事件日期與發布日期，也不要把媒體推測寫成已確認事實。'
@@ -501,7 +448,6 @@ export const chatWithBobo = async (
       stockContext +
       memoryPrompt +
       callerIntentPrompt +
-      deterministicEntityPrompt +
       webSearchPolicyPrompt +
       userDistinctionPrompt
     console.log(
@@ -526,7 +472,6 @@ export const chatWithBobo = async (
       dynamicLengthLimit +
       memoryPrompt +
       callerIntentPrompt +
-      deterministicEntityPrompt +
       webSearchPolicyPrompt +
       userDistinctionPrompt
     console.log(
@@ -861,48 +806,40 @@ export const chatWithBobo = async (
           .map(value => String(value))
       )
     )
-    const entityValidation = validateDeterministicStockClaims(replyText, deterministicEntities)
     const groundingValidation = validateGroundedResponse(replyText, allEvidenceBlocks, {
       requireCurrentPriceEvidence: isStockQuery,
       verifiedNumbers
     })
-    const validationViolations = [
-      ...entityValidation.violations,
-      ...groundingValidation.violations
-    ]
+    const validationViolations = groundingValidation.violations
     if (validationViolations.length > 0) {
-        const fallbackReply = validationFailureFallback(
-          deterministicEntities,
-          entityValidation.violations.length > 0
+      const fallbackReply = '目前無法用已驗證資料確認這項即時資訊，請稍後再試。'
+      console.warn(
+        `[Evidence Validation] Rejected response: ${validationViolations.join('; ')}`
+      )
+      try {
+        const repairedReply = await repairGroundedResponse(
+          systemPrompt,
+          evidenceContext,
+          prompt,
+          replyText,
+          validationViolations,
+          stockContext
         )
-        console.warn(
-          `[Evidence Validation] Rejected response: ${validationViolations.join('; ')}`
-        )
-        try {
-          const repairedReply = await repairDeterministicEntityClaims(
-            systemPrompt,
-            evidenceContext,
-            prompt,
-            replyText,
-            deterministicEntities,
-            validationViolations
-          )
-          if (
-            repairedReply &&
-            validateDeterministicStockClaims(repairedReply, deterministicEntities).valid &&
-            validateGroundedResponse(repairedReply, allEvidenceBlocks, {
-              requireCurrentPriceEvidence: isStockQuery,
-              verifiedNumbers
-            }).valid
-          ) {
-            replyText = repairedReply
-          } else {
-            replyText = fallbackReply
-          }
-        } catch (repairError: any) {
-          console.warn('[Deterministic Entity Validation] Repair failed:', repairError.message)
+        if (
+          repairedReply &&
+          validateGroundedResponse(repairedReply, allEvidenceBlocks, {
+            requireCurrentPriceEvidence: isStockQuery,
+            verifiedNumbers
+          }).valid
+        ) {
+          replyText = repairedReply
+        } else {
           replyText = fallbackReply
         }
+      } catch (repairError: any) {
+        console.warn('[Evidence Validation] Repair failed:', repairError.message)
+        replyText = fallbackReply
+      }
     }
 
     if (lastFetchedStockResults.length > 0) {

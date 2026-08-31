@@ -8,8 +8,6 @@ import {
   lookupStockTicker,
   getTaiwanStockName,
   taiwanStockMap,
-  extractDeterministicStockEntities,
-  resolveDeterministicStockEntity,
   getStockSlogan
 } from '../../src/utils/stock'
 import yahooFinance from 'yahoo-finance2'
@@ -48,28 +46,6 @@ describe('Stock Utility Tests', () => {
       expect(extractTickers('IS 股價')).toEqual([])
       expect(extractTickers('GO 股價')).toEqual([])
       expect(extractTickers('AAPL and TSLA stock price')).toEqual(['AAPL', 'TSLA'])
-    })
-  })
-
-  describe('deterministic stock entities', () => {
-    test('should lock 3037 to 欣興 and 6515 to 穎崴 without external lookup', () => {
-      expect(resolveDeterministicStockEntity('3037')).toMatchObject({
-        canonicalId: 'TWSE:3037',
-        ticker: '3037.TW',
-        canonicalName: '欣興',
-        confidence: 1
-      })
-      expect(resolveDeterministicStockEntity('6515')).toMatchObject({
-        canonicalId: 'TWSE:6515',
-        ticker: '6515.TW',
-        canonicalName: '穎崴',
-        confidence: 1
-      })
-      expect(extractDeterministicStockEntities('3037 的目標價')).toHaveLength(1)
-      expect(extractDeterministicStockEntities('6515 的目標價')).toHaveLength(1)
-      expect(getTaiwanStockName('3037')).toBe('欣興')
-      expect(getTaiwanStockName('3037.TW')).toBe('欣興')
-      expect(getTaiwanStockName('6515')).toBe('穎崴')
     })
   })
 

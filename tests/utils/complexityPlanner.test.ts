@@ -30,6 +30,19 @@ describe('semantic complexity planner', () => {
     })
   })
 
+  test('returns fast path simple for greetings without calling generate', async () => {
+    const generate = vi.fn()
+
+    await expect(
+      assessConversationComplexity('你好！', { generate })
+    ).resolves.toEqual({
+      complexity: 'simple',
+      needsMultipleSources: false,
+      reasonCategory: 'fast_path_simple'
+    })
+    expect(generate).not.toHaveBeenCalled()
+  })
+
   test('fails closed to simple when planning is unavailable', async () => {
     const generate = vi.fn().mockRejectedValue(new Error('offline'))
 

@@ -16,10 +16,28 @@ const PLANNER_FALLBACK: ConversationComplexityAssessment = {
   reasonCategory: 'planner_fallback'
 }
 
+const GREETING_OR_SIMPLE_PATTERN =
+  /^(?:你好|您好|早安|午安|晚安|哈囉|嗨|嗨嗨|在嗎|謝謝|感謝|多謝|掰掰|再見|安安|hi|hello|hey|thanks|thank you|xd+|哈哈+)[!！?？~～\s]*$/i
+
+export function isQuickSimplePrompt(prompt: string): boolean {
+  const trimmed = prompt.trim()
+  if (!trimmed) return true
+  if (GREETING_OR_SIMPLE_PATTERN.test(trimmed)) return true
+  return false
+}
+
 export async function assessConversationComplexity(
   prompt: string,
   runtime?: PolicyGenerationRuntime
 ): Promise<ConversationComplexityAssessment> {
+  if (isQuickSimplePrompt(prompt)) {
+    return {
+      complexity: 'simple',
+      needsMultipleSources: false,
+      reasonCategory: 'fast_path_simple'
+    }
+  }
+
   try {
     const response = await generateContentWithPolicy(
       {

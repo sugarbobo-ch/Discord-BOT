@@ -12,7 +12,6 @@ import {
   type MemoryCandidate,
   type MemoryProvenance
 } from '../memoryRepository'
-import { extractDeterministicStockEntities } from '../stock'
 import { classifyMemoryError, executeMemoryOp, MemoryOperationError } from './mem0'
 import { enqueueMemoryWrite, getMemoryWriteStatus, type MemoryWriteOutcome } from './memoryQueue'
 
@@ -24,6 +23,9 @@ export interface HybridContextOptions {
   route?: boolean
   /** Use the command's user prompt instead of the raw Discord message content. */
   currentContent?: string
+  promptOverride?: string
+  /** Fallback author string for slash interactions when target.user lacks a tag. */
+  fallbackAuthorName?: string
   now?: number
   minThreadScore?: number
   onRoute?: (routing: ConversationRoutingResult) => void
@@ -43,11 +45,7 @@ function toConversationMessage(
   const rawTarget = target as any
   const content =
     contentOverride ?? (typeof rawTarget.content === 'string' ? rawTarget.content : '')
-  const deterministicEntities = extractDeterministicStockEntities(content)
-  const entityKeys = [
-    ...extractConversationEntityKeys(content),
-    ...deterministicEntities.map(entity => `stock:${entity.ticker}`)
-  ]
+  const entityKeys = extractConversationEntityKeys(content)
 
   return {
     id: String(rawTarget.id),
