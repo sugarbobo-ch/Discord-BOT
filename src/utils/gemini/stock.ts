@@ -1,5 +1,6 @@
-import { ThinkingLevel, Type } from '@google/genai'
-import { executeGenAI, getResponseText, getApiKey, MODEL_NAME } from './core'
+import { Type } from '@google/genai'
+import { getResponseText, getApiKey, MODEL_NAME } from './core'
+import { generateContentWithPolicy } from './thinkingPolicy'
 import {
   COMMON_STOCK_MAP,
   getStockSlogan,
@@ -30,6 +31,8 @@ export const getStockPriceTool = {
 
 export interface StockAnalysisResult {
   isMentioningStock: boolean
+  needsTrendAnalysis?: boolean
+  needsRecentResearch?: boolean
   stocks: Array<{
     name: string
     ticker: string
@@ -43,8 +46,9 @@ export const detectStocksWithAI = async (
   prompt: string
 ): Promise<StockAnalysisResult> => {
   try {
-    const response = await executeGenAI(ai =>
-      ai.models.generateContent({
+    const response = await generateContentWithPolicy({
+      operation: 'classification',
+      request: {
         model: MODEL_NAME,
         contents: [
           {
@@ -52,9 +56,13 @@ export const detectStocksWithAI = async (
               '請分析以下使用者訊息，判斷其中是否提及、詢問或討論特定股票（包含台股、美股，或常見股票暱稱/簡稱如「發哥」代表聯發科、「二哥」等，或 4 位數台股代號、5 或 6 位數 ETF 代號）。\n' +
               '如果使用者訊息僅提及普通的數字，但無 any 股票相關意圖或前後文，請判定 isMentioningStock 為 false。\n' +
               '如果是台股，請輸出其股票名稱或常見簡稱（例如：台積電、聯發科）。如果是美股，請直接輸出其英文代號（例如：AAPL、TSLA）。\n' +
+              '請依完整語意判斷 needsTrendAnalysis：只有使用者需要歷史價格結構、技術面、走勢或後續分析時才為 true；單純查即時股價為 false。\n' +
+              '請依完整語意判斷 needsRecentResearch：只有回答需要近期新聞、公告、財報、事件原因或可能隨時間改變的外部資訊時才為 true。不要靠單一詞彙判斷。\n' +
               '請只回覆一個 JSON 格式的物件，格式必須精確如下：\n' +
               '{\n' +
               '  "isMentioningStock": true/false,\n' +
+              '  "needsTrendAnalysis": true/false,\n' +
+              '  "needsRecentResearch": true/false,\n' +
               '  "stocks": [\n' +
               '    {\n' +
               '      "name": "股票名稱或簡稱，例如：聯發科",\n' +
@@ -68,21 +76,25 @@ export const detectStocksWithAI = async (
           }
         ],
         config: {
-          responseMimeType: 'application/json',
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL
-          }
+          responseMimeType: 'application/json'
         }
-      })
-    )
+      }
+    })
 
     const resultText = getResponseText(response)
     if (resultText) {
       const result = JSON.parse(resultText)
-      return {
+      const analysis: StockAnalysisResult = {
         isMentioningStock: !!result.isMentioningStock,
         stocks: Array.isArray(result.stocks) ? result.stocks : []
       }
+      if (typeof result.needsTrendAnalysis === 'boolean') {
+        analysis.needsTrendAnalysis = result.needsTrendAnalysis
+      }
+      if (typeof result.needsRecentResearch === 'boolean') {
+        analysis.needsRecentResearch = result.needsRecentResearch
+      }
+      return analysis
     }
   } catch (error: any) {
     console.error('[detectStocksWithAI Error] Failed to detect stocks:', error.message)
@@ -103,8 +115,9 @@ export const searchStockTickerWithAI = async (query: string): Promise<string | n
   try {
     const tools = [{ googleSearch: {} }]
 
-    const response = await executeGenAI(ai =>
-      ai.models.generateContent({
+    const response = await generateContentWithPolicy({
+      operation: 'lookup',
+      request: {
         model: MODEL_NAME,
         contents: [
           {
@@ -124,13 +137,10 @@ export const searchStockTickerWithAI = async (query: string): Promise<string | n
         ],
         config: {
           tools,
-          responseMimeType: 'application/json',
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL
-          }
+          responseMimeType: 'application/json'
         }
-      })
-    )
+      }
+    })
 
     const resultText = getResponseText(response)
     if (resultText) {
@@ -330,8 +340,9 @@ export const getChineseNameWithAI = async (
   const targetName = englishName || ticker
 
   try {
-    const response = await executeGenAI(ai =>
-      ai.models.generateContent({
+    const response = await generateContentWithPolicy({
+      operation: 'lookup',
+      request: {
         model: MODEL_NAME,
         contents: [
           {
@@ -348,14 +359,9 @@ export const getChineseNameWithAI = async (
               `- "Super Micro Computer" -> "美超微"\n` +
               `請將 "${targetName}" 翻譯成最常見的繁體中文公司簡稱。請只回覆該中文簡稱，不要有任何其他標點符號、括號、說明文字或英文字母。如果無法確定，請回覆 null。`
           }
-        ],
-        config: {
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL
-          }
-        }
-      })
-    )
+        ]
+      }
+    })
 
     const name = getResponseText(response)
     if (name && name !== 'null' && name.trim()) {

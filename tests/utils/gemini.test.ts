@@ -9,6 +9,7 @@ import {
   cleanLatexSymbols,
   getApiKeys,
   executeGenAI,
+  getResponseText,
   isPotentialStockQuery,
   getNeutralLoadingStatus,
   shouldSkipTypoCheck,
@@ -17,6 +18,9 @@ import {
   chatCooldownMap
 } from '../../src/utils/gemini'
 import { clearStockCache, getStockPrice, searchStockTickerWithYahoo } from '../../src/utils/stock'
+import { getStockTrend } from '../../src/utils/stockTrend'
+import { researchRecentStockEvents } from '../../src/utils/gemini/stockResearch'
+import { assessConversationComplexity } from '../../src/utils/gemini/complexityPlanner'
 import { memoryRepository } from '../../src/utils/memoryRepository'
 import yahooFinance from 'yahoo-finance2'
 import auth from '../../config/auth.json'
@@ -49,7 +53,31 @@ vi.mock('../../src/utils/stock', async importOriginal => {
     searchStockTickerWithYahoo: vi.fn().mockResolvedValue(null)
   }
 })
-
+vi.mock('../../src/utils/stockTrend', async importOriginal => {
+  const actual = (await importOriginal()) as any
+  return {
+    ...actual,
+    getStockTrend: vi.fn().mockResolvedValue(null)
+  }
+})
+vi.mock('../../src/utils/gemini/stockResearch', async importOriginal => {
+  const actual = (await importOriginal()) as any
+  return {
+    ...actual,
+    researchRecentStockEvents: vi.fn().mockResolvedValue(null)
+  }
+})
+vi.mock('../../src/utils/gemini/complexityPlanner', async importOriginal => {
+  const actual = (await importOriginal()) as any
+  return {
+    ...actual,
+    assessConversationComplexity: vi.fn().mockResolvedValue({
+      complexity: 'simple',
+      needsMultipleSources: false,
+      reasonCategory: 'test_default'
+    })
+  }
+})
 const memorySearchSpy = vi.spyOn(memoryRepository, 'search')
 
 describe('Gemini Utility Tests', () => {
@@ -57,6 +85,13 @@ describe('Gemini Utility Tests', () => {
     vi.resetAllMocks()
     process.env.GEMINI_API_KEY = 'test_key'
     vi.mocked(searchStockTickerWithYahoo).mockResolvedValue(null)
+    vi.mocked(getStockTrend).mockResolvedValue(null)
+    vi.mocked(researchRecentStockEvents).mockResolvedValue(null)
+    vi.mocked(assessConversationComplexity).mockResolvedValue({
+      complexity: 'simple',
+      needsMultipleSources: false,
+      reasonCategory: 'test_default'
+    })
     vi.spyOn(yahooFinance.prototype, 'quote').mockResolvedValue({
       regularMarketPrice: 600,
       currency: 'TWD'
@@ -625,6 +660,7 @@ describe('Gemini Utility Tests', () => {
 
     expect(reply).toBe('3037 是欣興，以下分析以欣興為準。')
     expect(mockGenerateContent).toHaveBeenCalledTimes(3)
+    expect(mockGenerateContent.mock.calls[2][0].config.thinkingConfig.thinkingLevel).toBe('HIGH')
   })
 
   test('chatWithBobo should repair an invented current stock price', async () => {
@@ -653,6 +689,150 @@ describe('Gemini Utility Tests', () => {
 
     expect(reply).toBe('台積電目前股價是 600 元。')
     expect(mockGenerateContent).toHaveBeenCalledTimes(3)
+  })
+
+  test('chatWithBobo should not use an entity correction fallback for an unverified price', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "needsTrendAnalysis": true, "needsRecentResearch": true, "stocks": [{"name": "欣興", "ticker": "3037.TW"}]}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: '欣興目前股價是 123 元，明天不一定繼續跌停。' }]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: '欣興目前股價是 123 元，先別急著追殺。' }]
+            }
+          }
+        ]
+      })
+
+    const reply = await chatWithBobo('請分析欣興後續走勢', 'user_unverified_price_fallback_test')
+
+    expect(reply).toBe('目前無法用已驗證資料確認這項即時資訊，請稍後再試。')
+    expect(reply).not.toContain('更正')
+  })
+
+  test('chatWithBobo should ground trend questions with candles and recent-event research', async () => {
+    vi.mocked(getStockTrend).mockResolvedValueOnce({
+      symbol: '3037.TW',
+      asOf: '2026-08-28T05:30:00.000Z',
+      periodDays: 120,
+      sampleSize: 80,
+      latestClose: 120,
+      change5dPercent: -8,
+      change20dPercent: -15,
+      ma5: 124,
+      ma20: 136,
+      ma60: 130,
+      rsi14: 28,
+      volumeRatio20d: 2.4,
+      support: 115,
+      resistance: 136,
+      trend: 'bearish'
+    })
+    vi.mocked(researchRecentStockEvents).mockResolvedValueOnce({
+      searchedAt: '2026-08-31T02:00:00.000Z',
+      summary: '近期事件摘要',
+      sources: [{ title: '公司公告', url: 'https://example.com/filing' }],
+      queries: ['欣興 3037 近期消息']
+    })
+
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"isMentioningStock": true, "needsTrendAnalysis": true, "needsRecentResearch": true, "stocks": [{"name": "欣興", "ticker": "3037.TW"}]}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: '走勢偏空，留意量價與近期事件。' }] } }]
+      })
+
+    const reply = await chatWithBobo('請分析欣興最近的趨勢', 'user_grounded_trend_test')
+
+    expect(reply).toBe('走勢偏空，留意量價與近期事件。')
+    expect(getStockTrend).toHaveBeenCalledWith('3037.TW')
+    expect(researchRecentStockEvents).toHaveBeenCalledWith(
+      [{ name: '欣興', ticker: '3037.TW' }],
+      '請分析欣興最近的趨勢'
+    )
+    const request = JSON.stringify(mockGenerateContent.mock.calls[1][0])
+    expect(request).toContain('change20dPercent')
+    expect(request).toContain('volumeRatio20d')
+    expect(request).toContain('近期事件摘要')
+    expect(request).toContain('https://example.com/filing')
+    expect(mockGenerateContent.mock.calls[1][0].config.thinkingConfig.thinkingLevel).toBe('HIGH')
+  })
+
+  test('chatWithBobo should let the model choose Google Search and render actual sources', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      candidates: [
+        {
+          content: { parts: [{ text: '這是模型根據需求產生的回答。' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              {
+                web: {
+                  title: '官方發布',
+                  uri: 'https://example.com/announcement'
+                }
+              }
+            ]
+          }
+        }
+      ]
+    })
+
+    const reply = await chatWithBobo('請解釋量子運算', 'user_semantic_search_test')
+
+    const request = JSON.stringify(mockGenerateContent.mock.calls[0][0])
+    expect(request).toContain('googleSearch')
+    expect(mockGenerateContent.mock.calls[0][0].config.thinkingConfig.thinkingLevel).toBe(
+      'MINIMAL'
+    )
+    expect(reply).toContain('這是模型根據需求產生的回答。')
+    expect(reply).toContain('[官方發布](https://example.com/announcement)')
+  })
+
+  test('chatWithBobo should use high thinking for semantically complex conversation', async () => {
+    vi.mocked(assessConversationComplexity).mockResolvedValueOnce({
+      complexity: 'complex',
+      needsMultipleSources: true,
+      reasonCategory: 'multi_source_synthesis'
+    })
+    mockGenerateContent.mockResolvedValueOnce({
+      candidates: [{ content: { parts: [{ text: '綜合分析結果。' }] } }]
+    })
+
+    await chatWithBobo('比較兩種制度的影響並整理證據', 'user_complex_thinking_test')
+
+    expect(mockGenerateContent.mock.calls[0][0].config.thinkingConfig.thinkingLevel).toBe('HIGH')
   })
 
   test('chatWithBobo should clean stock names and match them correctly', async () => {
@@ -807,6 +987,7 @@ describe('Gemini Utility Tests', () => {
             content: {
               parts: [
                 {
+                  thoughtSignature: 'test_thought_signature',
                   functionCall: {
                     name: 'get_stock_price',
                     args: { tickerSymbol: 'DELL' },
@@ -855,9 +1036,27 @@ describe('Gemini Utility Tests', () => {
 
     // Second call should NOT have googleSearch in tools
     expect(secondCallArgs.config.tools).not.toContainEqual({ googleSearch: {} })
+    expect(JSON.stringify(secondCallArgs.contents)).toContain('test_thought_signature')
   })
 
   describe('cleanLatexSymbols', () => {
+    test('should never expose model thought text in the final response', () => {
+      expect(
+        getResponseText({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { thought: true, text: 'internal reasoning must stay hidden' },
+                  { text: '使用者可見答案' }
+                ]
+              }
+            }
+          ]
+        })
+      ).toBe('使用者可見答案')
+    })
+
     test('should clean simple LaTeX symbols and text wrappers', () => {
       expect(cleanLatexSymbols('$\\sim$')).toBe('~')
       expect(cleanLatexSymbols('$\\rightarrow$')).toBe('→')
@@ -894,7 +1093,7 @@ describe('Gemini Utility Tests', () => {
             content: {
               parts: [
                 {
-                  text: '{"isMentioningStock": true, "stocks": [{"name": "聯發科", "ticker": "2454.TW"}]}'
+                  text: '{"isMentioningStock": true, "needsTrendAnalysis": false, "needsRecentResearch": false, "stocks": [{"name": "聯發科", "ticker": "2454.TW"}]}'
                 }
               ]
             }
@@ -905,6 +1104,8 @@ describe('Gemini Utility Tests', () => {
       const result = await detectStocksWithAI('發哥最新股價？')
       expect(result).toEqual({
         isMentioningStock: true,
+        needsTrendAnalysis: false,
+        needsRecentResearch: false,
         stocks: [{ name: '聯發科', ticker: '2454.TW' }]
       })
 

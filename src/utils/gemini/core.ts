@@ -29,6 +29,10 @@ export const logAIResponse = (label: string, status: number, response: any) => {
   const candidate = response?.candidates?.[0]
   const contentParts = candidate?.content?.parts || []
   contentParts.forEach((part: any) => {
+    if (part.thought) {
+      console.log(`[AI Response - ${label}] Thought: [omitted]`)
+      return
+    }
     if (part.text) {
       const preview = part.text.length > 100 ? `${part.text.substring(0, 100)}...` : part.text
       console.log(`[AI Response - ${label}] Text Preview: "${preview.replace(/\n/g, ' ')}"`)

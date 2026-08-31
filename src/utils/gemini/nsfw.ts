@@ -1,5 +1,5 @@
-import { ThinkingLevel } from '@google/genai'
-import { executeGenAI, getApiKey, getResponseText, MODEL_NAME } from './core'
+import { getApiKey, getResponseText, MODEL_NAME } from './core'
+import { generateContentWithPolicy } from './thinkingPolicy'
 
 /**
  * 檢查圖片是否包含 NSFW 內容 (使用 Gemini Multimodal)
@@ -17,8 +17,9 @@ export const checkImageNSFW = async (
   const base64Image = imageBuffer.toString('base64')
 
   try {
-    const response = await executeGenAI(ai =>
-      ai.models.generateContent({
+    const response = await generateContentWithPolicy({
+      operation: 'moderation',
+      request: {
         model: MODEL_NAME,
         contents: [
           {
@@ -36,13 +37,10 @@ export const checkImageNSFW = async (
           }
         ],
         config: {
-          responseMimeType: 'application/json',
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL
-          }
+          responseMimeType: 'application/json'
         }
-      })
-    )
+      }
+    })
 
     const resultText = getResponseText(response)
     if (resultText) {

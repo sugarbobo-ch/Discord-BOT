@@ -2,6 +2,7 @@ export type EvidenceSourceType =
   | 'human_message'
   | 'model_output_untrusted'
   | 'official_api'
+  | 'web_search'
   | 'moderator_confirmed'
 
 export type EvidenceStatus = 'asserted' | 'verified' | 'untrusted'

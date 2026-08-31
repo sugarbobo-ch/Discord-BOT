@@ -1,6 +1,4 @@
-import { ThinkingLevel } from '@google/genai'
 import {
-  executeGenAI,
   getApiKey,
   getResponseText,
   MODEL_NAME,
@@ -27,6 +25,14 @@ import {
   getProgressStatus,
   getStockPriceTool
 } from './stock'
+import { getStockTrend, type StockTrendSnapshot } from '../stockTrend'
+import {
+  researchRecentStockEvents,
+  type StockResearchResult
+} from './stockResearch'
+import { appendGoogleSearchSources } from './searchGrounding'
+import { assessConversationComplexity } from './complexityPlanner'
+import { generateContentWithPolicy } from './thinkingPolicy'
 import { classifyCallerIntent, type CallerIntentAnalysis } from '../conversation'
 import { getUserMemorySetting } from '../db'
 import {
@@ -122,17 +128,14 @@ async function repairDeterministicEntityClaims(
     { text: `上一版回答（僅供找出錯誤，不可照抄）：${previousReply}` }
   )
 
-  const response = await executeGenAI(ai =>
-    ai.models.generateContent({
+  const response = await generateContentWithPolicy({
+    operation: 'repair',
+    request: {
       model: MODEL_NAME,
-      contents: [{ role: 'user', parts: repairParts }],
-      config: {
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.MINIMAL
-        }
-      }
-    })
-  )
+      contents: [{ role: 'user', parts: repairParts }]
+    },
+    signals: { validationFailed: true }
+  })
   return getResponseText(response)
 }
 
@@ -144,6 +147,16 @@ function deterministicEntityFallback(entities: readonly DeterministicStockEntity
     .map(entity => `${entity.surface} 是 ${entity.canonicalName}（${entity.ticker}）`)
     .join('；')
   return `更正：${mappings}。目前不會把這些代號對應成其他公司。`
+}
+
+function validationFailureFallback(
+  entities: readonly DeterministicStockEntity[],
+  hasEntityViolations: boolean
+): string {
+  if (!hasEntityViolations) {
+    return '目前無法用已驗證資料確認這項即時資訊，請稍後再試。'
+  }
+  return deterministicEntityFallback(entities)
 }
 
 /**
@@ -195,6 +208,10 @@ export const chatWithBobo = async (
   // 提取股票代碼並進行預取
   let stockContext = ''
   const lastFetchedStockResults: any[] = []
+  const lastFetchedStockTrends: StockTrendSnapshot[] = []
+  let recentStockResearch: StockResearchResult | null = null
+  let stockNeedsTrendAnalysis = false
+  let stockNeedsRecentResearch = false
   const callerIntent = conversationContext?.intent || classifyCallerIntent(prompt)
   const deterministicEntities = extractDeterministicStockEntities(prompt)
 
@@ -211,6 +228,8 @@ export const chatWithBobo = async (
     try {
       console.log(`[AI Chat Path Check] Entering stock query path. Calling detectStocksWithAI...`)
       const analysis = await detectStocksWithAI(prompt)
+      stockNeedsTrendAnalysis = analysis.needsTrendAnalysis === true
+      stockNeedsRecentResearch = analysis.needsRecentResearch === true
       const explicitTickerQueries = extractExplicitTickerQueries(prompt)
       console.log(
         `[AI Chat Path Check] detectStocksWithAI returned: isMentioningStock = ${analysis.isMentioningStock}, stocks = ${JSON.stringify(analysis.stocks)}`
@@ -336,12 +355,25 @@ export const chatWithBobo = async (
               `⚡ 正在透過 Yahoo 財經 API 獲取 **${stockNames}** 的最新行情與財務數據... 💸`
             )
           }
-          const stockResults = await Promise.all(
-            tickers.map(async ticker => {
-              const res = await getStockPrice(ticker)
-              return { originalTicker: ticker, res }
-            })
-          )
+          const researchTargets = tickers.map(ticker => ({
+            ticker,
+            name: nameMap.get(ticker) || getTaiwanStockName(ticker) || ticker
+          }))
+          const [stockResults, researchResult] = await Promise.all([
+            Promise.all(
+              tickers.map(async ticker => {
+                const [res, trend] = await Promise.all([
+                  getStockPrice(ticker),
+                  stockNeedsTrendAnalysis ? getStockTrend(ticker) : Promise.resolve(null)
+                ])
+                return { originalTicker: ticker, res, trend }
+              })
+            ),
+            stockNeedsRecentResearch
+              ? researchRecentStockEvents(researchTargets, prompt)
+              : Promise.resolve(null)
+          ])
+          recentStockResearch = researchResult
 
           const stockInfoStrings = stockResults.map(({ originalTicker, res }) => {
             let stockName = nameMap.get(originalTicker)
@@ -367,6 +399,15 @@ export const chatWithBobo = async (
             lastFetchedStockResults.push(res)
             return `- 股票名稱: ${stockName} (代號: ${res.symbol}) 最新數據 (${details.join(', ')})`
           })
+          const trendInfoStrings = stockResults.flatMap(({ originalTicker, trend }) => {
+            if (!trend || trend.sampleSize === 0) return []
+            lastFetchedStockTrends.push(trend)
+            const stockName =
+              nameMap.get(originalTicker) || getTaiwanStockName(originalTicker) || originalTicker
+            return [
+              `- 股票名稱: ${stockName} (代號: ${trend.symbol}) 歷史走勢指標: ${JSON.stringify(trend)}`
+            ]
+          })
 
           if (stockInfoStrings.length > 0) {
             if (onStatusUpdate) {
@@ -377,7 +418,15 @@ export const chatWithBobo = async (
                 )
               )
             }
-            stockContext = `\n\n【系統資訊 - 當前真實股票數據對照表】\n${stockInfoStrings.join('\n')}\n請「必須且只能」依據上述對照表中提供的真實數據回答使用者的股價與相關詢問。請特別注意：不同的股票代號對應不同的公司/名稱，請勿將 A 公司的股價、漲跌或財務數據誤植給 B 公司，也不要使用資料庫內過時的股價。若資料顯示查詢失敗，請誠實告知使用者查無資料。`
+            const trendContext = trendInfoStrings.length
+              ? `\n\n【系統資訊 - 由歷史 K 線確定性計算的走勢指標】\n${trendInfoStrings.join('\n')}\n所有指標都有 asOf 與 sampleSize；只能描述截至該時間的歷史結構，不得把 bullish、bearish 或技術指標寫成未來必然結果。`
+              : '\n\n【系統資訊 - 歷史走勢資料不足】\n目前沒有足夠 K 線樣本，請勿自行推測均線、量價、支撐壓力或 RSI。'
+            const researchContext = recentStockResearch
+              ? `\n\n【系統資訊 - 近期事件搜尋結果】\n搜尋時間: ${recentStockResearch.searchedAt}\n摘要: ${recentStockResearch.summary}\n來源: ${recentStockResearch.sources
+                  .map(source => `${source.title}: ${source.url}`)
+                  .join('；') || '搜尋服務未回傳可展示來源'}\n近期事件屬搜尋所得 asserted evidence；回答時要區分已確認事實與媒體推測，並使用對應 sourceId 引用，不得把搜尋摘要中的推測升格為事實。`
+              : ''
+            stockContext = `\n\n【系統資訊 - 當前真實股票數據對照表】\n${stockInfoStrings.join('\n')}\n請「必須且只能」依據上述對照表中提供的真實數據回答使用者的股價與相關詢問。請特別注意：不同的股票代號對應不同的公司/名稱，請勿將 A 公司的股價、漲跌或財務數據誤植給 B 公司，也不要使用資料庫內過時的股價。若資料顯示查詢失敗，請誠實告知使用者查無資料。${trendContext}${researchContext}`
           }
         }
       }
@@ -385,6 +434,10 @@ export const chatWithBobo = async (
       console.error('Failed to pre-fetch stock data with AI: ', stockErr.message)
     }
   }
+
+  const conversationComplexity = isStockQuery
+    ? null
+    : await assessConversationComplexity(prompt)
 
   let userDistinctionPrompt = ''
   if (authorName) {
@@ -437,6 +490,9 @@ export const chatWithBobo = async (
           '\n'
         )}\n以上對照來自離線股票代號資料，優先級高於頻道聊天內容、長期記憶與模型猜測；若任何上下文出現不同公司名稱，請以此對照為準。`
     : ''
+  const webSearchPolicyPrompt = isStockQuery
+    ? ''
+    : '\n\n【網路搜尋原則】\n你可以使用 Google Search。請根據使用者完整語意自行判斷是否需要搜尋：凡是可能隨時間改變、你不確定、使用者要求查證或需要可追溯來源的事實，應先搜尋再回答；穩定知識、純創作、翻譯、改寫與一般閒聊不必搜尋。若使用者明確要求搜尋或不要搜尋，遵從該要求。搜尋後只根據實際取得的來源作答，區分事件日期與發布日期，也不要把媒體推測寫成已確認事實。'
 
   let systemPrompt = ''
   if (stockContext) {
@@ -446,6 +502,7 @@ export const chatWithBobo = async (
       memoryPrompt +
       callerIntentPrompt +
       deterministicEntityPrompt +
+      webSearchPolicyPrompt +
       userDistinctionPrompt
     console.log(
       `[AI Chat Path Check] Selected systemPrompt: ANALYST_SYSTEM_PROMPT (Stock context is active)`
@@ -470,6 +527,7 @@ export const chatWithBobo = async (
       memoryPrompt +
       callerIntentPrompt +
       deterministicEntityPrompt +
+      webSearchPolicyPrompt +
       userDistinctionPrompt
     console.log(
       `[AI Chat Path Check] Selected systemPrompt: BOBO_SYSTEM_PROMPT (General chat is active) with dynamic length limit: ${userPromptLen} chars`
@@ -487,7 +545,36 @@ export const chatWithBobo = async (
       content: `官方行情工具回傳：${JSON.stringify(result)}`,
       entityKeys: result.symbol ? [`stock:${result.symbol}`] : []
     }))
-    const allEvidenceBlocks = [...(evidenceBlocks || []), ...verifiedEvidenceBlocks]
+    const trendEvidenceBlocks: EvidenceBlock[] = lastFetchedStockTrends.map((trend, index) => ({
+      sourceId: `stock-trend:${trend.symbol || index}`,
+      speakerId: 'system',
+      threadId: conversationContext?.threadId || 'thread:current',
+      sourceType: 'official_api',
+      status: 'verified',
+      timestamp: trend.asOf ? Date.parse(trend.asOf) : Date.now(),
+      content: `歷史 K 線確定性計算結果：${JSON.stringify(trend)}`,
+      entityKeys: trend.symbol ? [`stock:${trend.symbol}`] : []
+    }))
+    const researchEvidenceBlocks: EvidenceBlock[] = recentStockResearch
+      ? [
+          {
+            sourceId: 'web-search:recent-stock-events',
+            speakerId: 'system',
+            threadId: conversationContext?.threadId || 'thread:current',
+            sourceType: 'web_search',
+            status: 'asserted',
+            timestamp: Date.parse(recentStockResearch.searchedAt),
+            content: JSON.stringify(recentStockResearch),
+            entityKeys: lastFetchedStockTrends.map(trend => `stock:${trend.symbol}`)
+          }
+        ]
+      : []
+    const allEvidenceBlocks = [
+      ...(evidenceBlocks || []),
+      ...verifiedEvidenceBlocks,
+      ...trendEvidenceBlocks,
+      ...researchEvidenceBlocks
+    ]
     const initialParts: any[] = [
       {
         text: systemPrompt
@@ -561,6 +648,16 @@ export const chatWithBobo = async (
     let loopCount = 0
     const MAX_LOOPS = 5
     let lastResponse: any = null
+    const thinkingOperation = isStockQuery ? 'stock_analysis' : 'conversation'
+    const thinkingSignals = isStockQuery
+      ? {
+          needsTrendAnalysis: stockNeedsTrendAnalysis,
+          needsRecentResearch: stockNeedsRecentResearch
+        }
+      : {
+          semanticComplexity: conversationComplexity?.complexity,
+          needsMultipleSources: conversationComplexity?.needsMultipleSources
+        }
 
     while (loopCount < MAX_LOOPS) {
       loopCount++
@@ -578,10 +675,7 @@ export const chatWithBobo = async (
 
         const hasSearch = currentTools.some((t: any) => t.googleSearch)
         const config: any = {
-          tools: currentTools,
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL
-          }
+          tools: currentTools
         }
         if (hasSearch) {
           config.toolConfig = {
@@ -589,13 +683,15 @@ export const chatWithBobo = async (
           }
         }
 
-        response = await executeGenAI(ai =>
-          ai.models.generateContent({
+        response = await generateContentWithPolicy({
+          operation: thinkingOperation,
+          request: {
             model: MODEL_NAME,
             contents,
             config
-          })
-        )
+          },
+          signals: thinkingSignals
+        })
       } catch (error: any) {
         const hasGoogleSearch = tools.some((t: any) => t.googleSearch)
         if (
@@ -610,10 +706,7 @@ export const chatWithBobo = async (
           const backupTools = tools.filter((t: any) => !t.googleSearch)
           const hasBackupSearch = backupTools.some((t: any) => t.googleSearch)
           const backupConfig: any = {
-            tools: backupTools,
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.MINIMAL
-            }
+            tools: backupTools
           }
           if (hasBackupSearch) {
             backupConfig.toolConfig = {
@@ -621,13 +714,15 @@ export const chatWithBobo = async (
             }
           }
 
-          response = await executeGenAI(ai =>
-            ai.models.generateContent({
+          response = await generateContentWithPolicy({
+            operation: thinkingOperation,
+            request: {
               model: MODEL_NAME,
               contents,
               config: backupConfig
-            })
-          )
+            },
+            signals: thinkingSignals
+          })
         } else {
           throw error
         }
@@ -713,6 +808,7 @@ export const chatWithBobo = async (
           const cleanPart: any = {}
           if (part.text !== undefined) cleanPart.text = part.text
           if (part.functionCall) cleanPart.functionCall = part.functionCall
+          if (part.thoughtSignature) cleanPart.thoughtSignature = part.thoughtSignature
           return cleanPart
         })
 
@@ -758,6 +854,13 @@ export const chatWithBobo = async (
         .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
         .map(value => String(value))
     )
+    verifiedNumbers.push(
+      ...lastFetchedStockTrends.flatMap(trend =>
+        Object.values(trend)
+          .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+          .map(value => String(value))
+      )
+    )
     const entityValidation = validateDeterministicStockClaims(replyText, deterministicEntities)
     const groundingValidation = validateGroundedResponse(replyText, allEvidenceBlocks, {
       requireCurrentPriceEvidence: isStockQuery,
@@ -768,6 +871,10 @@ export const chatWithBobo = async (
       ...groundingValidation.violations
     ]
     if (validationViolations.length > 0) {
+        const fallbackReply = validationFailureFallback(
+          deterministicEntities,
+          entityValidation.violations.length > 0
+        )
         console.warn(
           `[Evidence Validation] Rejected response: ${validationViolations.join('; ')}`
         )
@@ -790,11 +897,11 @@ export const chatWithBobo = async (
           ) {
             replyText = repairedReply
           } else {
-            replyText = deterministicEntityFallback(deterministicEntities)
+            replyText = fallbackReply
           }
         } catch (repairError: any) {
           console.warn('[Deterministic Entity Validation] Repair failed:', repairError.message)
-          replyText = deterministicEntityFallback(deterministicEntities)
+          replyText = fallbackReply
         }
     }
 
@@ -810,6 +917,9 @@ export const chatWithBobo = async (
       if (slogans.length > 0) {
         replyText = slogans.map(s => `📣 **${s}**`).join('\n') + '\n\n' + replyText
       }
+    }
+    if (!isStockQuery) {
+      replyText = appendGoogleSearchSources(replyText, lastResponse)
     }
     console.log(
       `[AI Chat Response] User: ${authorName || userId} (${userId}) | Response: "${replyText.replace(/\n/g, ' ')}"`

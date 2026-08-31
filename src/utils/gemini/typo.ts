@@ -1,5 +1,5 @@
-import { ThinkingLevel } from '@google/genai'
-import { executeGenAI, getApiKey, getResponseText, MODEL_NAME, hasPromptInjection } from './core'
+import { getApiKey, getResponseText, MODEL_NAME, hasPromptInjection } from './core'
+import { generateContentWithPolicy } from './thinkingPolicy'
 
 // Cooldown 限制 (毫秒)
 export const SERVER_TYPO_COOLDOWN = 15000 // 錯字吐槽每伺服器 (或個人) 冷卻 15 秒
@@ -100,8 +100,9 @@ export const roastTypo = async (
   }
 
   try {
-    const response = await executeGenAI(ai =>
-      ai.models.generateContent({
+    const response = await generateContentWithPolicy({
+      operation: 'classification',
+      request: {
         model: MODEL_NAME,
         contents: [
           {
@@ -122,13 +123,10 @@ export const roastTypo = async (
           }
         ],
         config: {
-          responseMimeType: 'application/json',
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MINIMAL
-          }
+          responseMimeType: 'application/json'
         }
-      })
-    )
+      }
+    })
 
     const text = getResponseText(response)
     if (!text) {
