@@ -64,5 +64,6 @@ describe('structured caller intent classifier', () => {
     expect(shouldWriteMemoryCandidate('笑死')).toBe(false)
     expect(shouldWriteMemoryCandidate('哈哈')).toBe(false)
     expect(shouldWriteMemoryCandidate('好')).toBe(false)
+    expect(shouldWriteMemoryCandidate('123')).toBe(false)
   })
 })

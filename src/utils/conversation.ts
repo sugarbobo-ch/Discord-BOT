@@ -351,6 +351,12 @@ export function shouldWriteMemoryCandidate(
     return false
   }
 
+  // Numeric-only messages are usually counters, test inputs, IDs, or other
+  // low-context fragments rather than durable facts about the caller.
+  if (/^[\d\s.,+-]+$/.test(trimmed)) {
+    return false
+  }
+
   // Skip pure trivial backchannels/agreements (e.g. "好", "笑死", "真的", "哈哈")
   if (AGREEMENT_PATTERN.test(trimmed) || BACKCHANNEL_PATTERN.test(trimmed)) {
     return false

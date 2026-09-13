@@ -20,7 +20,7 @@ import { FeatureCommand } from './commands/feature'
 import { StockCommand } from './commands/stock'
 import { MemoryCommand } from './commands/memory'
 import { AutoModCommand } from './commands/automod'
-import { roastTypo, shouldSkipTypoCheck, isStrictLocalTypoCheck } from './utils/gemini'
+import { findLocalTypo } from './utils/gemini'
 import { checkAndFixTwitterEmbed } from './features/twitter'
 import { checkAndAddNsfwEmbed } from './features/nsfwEmbed'
 import { handleAutoMod } from './features/automod'
@@ -160,32 +160,14 @@ client.on('messageCreate', async (message: Message) => {
       nsfwCtrl.sendHentaiURL(message)
     }
 
-    const typos = ['因該', '以經', '部會', '絕得', '在一次']
-    const foundTypo = typos.find(typo => message.content.includes(typo))
-    if (foundTypo) {
-      // 1. 靜態預先過濾 (跳過代碼塊、引言、網址等)
-      if (!shouldSkipTypoCheck(message.content, foundTypo)) {
-        const result = await roastTypo(
-          message.content,
-          foundTypo,
-          message.guild?.id || message.author.id
+    const localTypo = findLocalTypo(message.content)
+    if (localTypo) {
+      if (localTypo.typo === '因該' && Date.now() % 2 !== 0) {
+        message.reply(
+          `你是我自上次重啟第${++count}個智障把「應」打成「因」的，打對字對您來說可能比確診還難。`
         )
-        if (result) {
-          if (result.isTypo && result.roast) {
-            message.reply(result.roast)
-          }
-        } else {
-          // AI 無法使用 (如 rate limit 或錯誤)，僅在為「因該」且符合嚴格 Heuristic 時，才使用本地預設吐槽
-          if (foundTypo === '因該' && isStrictLocalTypoCheck(message.content)) {
-            if (Date.now() % 2 === 0) {
-              message.reply('抓到了! 是錯字! "應"該吶!')
-            } else {
-              message.reply(
-                `你是我自上次重啟第${++count}個智障把「應」打成「因」的，打對字對您來說可能比確診還難。`
-              )
-            }
-          }
-        }
+      } else {
+        message.reply(`抓到了！是「${localTypo.correction}」，不是「${localTypo.typo}」啦！`)
       }
     }
 

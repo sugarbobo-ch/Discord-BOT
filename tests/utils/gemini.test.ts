@@ -2,7 +2,6 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   checkImageNSFW,
   chatWithBobo,
-  roastTypo,
   detectStocksWithAI,
   searchStockTickerWithAI,
   getChineseNameWithAI,
@@ -14,7 +13,7 @@ import {
   getNeutralLoadingStatus,
   shouldSkipTypoCheck,
   isStrictLocalTypoCheck,
-  typoCooldownMap,
+  findLocalTypo,
   chatCooldownMap
 } from '../../src/utils/gemini'
 import {
@@ -101,7 +100,6 @@ describe('Gemini Utility Tests', () => {
       regularMarketPrice: 600,
       currency: 'TWD'
     } as any)
-    typoCooldownMap.clear()
     chatCooldownMap.clear()
     clearStockCache()
     memorySearchSpy.mockResolvedValue({ results: [] })
@@ -398,50 +396,6 @@ describe('Gemini Utility Tests', () => {
     expect(reply).toContain('連線逾時')
   })
 
-  test('roastTypo should return sarcastic response', async () => {
-    mockGenerateContent.mockResolvedValue({
-      candidates: [
-        {
-          content: {
-            parts: [
-              {
-                text: '{"isTypo": true, "roast": "又打錯字了，是「應該」不是「因該」啦！"}'
-              }
-            ]
-          }
-        }
-      ]
-    })
-
-    const result = await roastTypo('因該是這樣吧', '因該', 'guild_123')
-    expect(result).toEqual({
-      isTypo: true,
-      roast: '又打錯字了，是「應該」不是「因該」啦！'
-    })
-  })
-
-  test('roastTypo should return isTypo false when AI determines it is correct usage', async () => {
-    mockGenerateContent.mockResolvedValue({
-      candidates: [
-        {
-          content: {
-            parts: [
-              {
-                text: '{"isTypo": false, "roast": null}'
-              }
-            ]
-          }
-        }
-      ]
-    })
-
-    const result = await roastTypo('行政院部會官員', '部會', 'guild_123')
-    expect(result).toEqual({
-      isTypo: false,
-      roast: null
-    })
-  })
-
   describe('shouldSkipTypoCheck', () => {
     test('should skip when typo is inside code block', () => {
       expect(shouldSkipTypoCheck('```\nconst x = "因該"\n```', '因該')).toBe(true)
@@ -479,6 +433,28 @@ describe('Gemini Utility Tests', () => {
 
     test('should return true for typical typo', () => {
       expect(isStrictLocalTypoCheck('我因該會去')).toBe(true)
+    })
+  })
+
+  describe('findLocalTypo', () => {
+    test.each([
+      ['我因該會去', '因該', '應該'],
+      ['我以經到了', '以經', '已經'],
+      ['我絕得可以', '絕得', '覺得'],
+      ['我部會去', '部會', '不會'],
+      ['我們在一次吧', '在一次', '再一次']
+    ])('corrects %s locally', (content, typo, correction) => {
+      expect(findLocalTypo(content)).toEqual({ typo, correction })
+    })
+
+    test.each([
+      '因為該公司倒閉了',
+      '行政院部會官員',
+      '在一次意外中受傷',
+      '以經濟發展為主',
+      '`因該` 是錯字'
+    ])('does not flag correct or quoted usage: %s', content => {
+      expect(findLocalTypo(content)).toBeNull()
     })
   })
 
@@ -636,7 +612,7 @@ describe('Gemini Utility Tests', () => {
 
 
 
-  test('chatWithBobo should repair an invented current stock price', async () => {
+    test('chatWithBobo should repair an invented current stock price', async () => {
     mockGenerateContent
       .mockResolvedValueOnce({
         candidates: [
