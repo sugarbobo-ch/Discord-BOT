@@ -162,6 +162,32 @@ describe('Mem0 operation reliability', () => {
     expect(classified.retryAfterMs).toBe(5_000)
   })
 
+  test('retries fetch failures caused by a nested EPIPE network error', async () => {
+    const sleep = vi.fn((ms: number) => vi.advanceTimersByTimeAsync(ms))
+    const operation = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('write EPIPE'), {
+            code: 'EPIPE',
+            errno: -32,
+            syscall: 'write'
+          })
+        })
+      )
+      .mockResolvedValueOnce('ok')
+
+    const promise = executeMemoryOp(() => operation(), {
+      memoryFactory: () => ({}),
+      sleep,
+      maxAttempts: 2
+    })
+    await vi.runAllTimersAsync()
+
+    await expect(promise).resolves.toBe('ok')
+    expect(operation).toHaveBeenCalledTimes(2)
+  })
+
   test('Mem0 Memory.add propagates an extraction 429 instead of resolving empty results', async () => {
     const originalFetch = global.fetch
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any

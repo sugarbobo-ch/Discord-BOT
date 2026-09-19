@@ -1397,6 +1397,34 @@ describe('Gemini Utility Tests', () => {
       expect(mockGenerateContent).toHaveBeenCalledTimes(2)
     })
 
+    test('should retry when fetch fails with a nested EPIPE error', async () => {
+      ;(auth as any).geminiApiKeys = []
+      ;(auth as any).geminiApiKey = undefined
+      process.env.GEMINI_API_KEY = ''
+      process.env.GEMINI_API_KEYS = 'single_epipe_retry_key'
+      getApiKeys()
+
+      mockGenerateContent
+        .mockRejectedValueOnce(
+          Object.assign(new TypeError('fetch failed'), {
+            cause: Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })
+          })
+        )
+        .mockResolvedValueOnce({
+          candidates: [{ content: { parts: [{ text: 'Recovered from EPIPE' }] } }]
+        })
+
+      const reply = await executeGenAI(ai =>
+        ai.models.generateContent({
+          model: 'model',
+          contents: [{ parts: [{ text: 'test' }] }]
+        })
+      )
+
+      expect(reply.candidates?.[0].content?.parts?.[0].text).toBe('Recovered from EPIPE')
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+    })
+
     test('should throw error after max retries when single key repeatedly encounters transient error (503)', async () => {
       ;(auth as any).geminiApiKeys = []
       ;(auth as any).geminiApiKey = undefined

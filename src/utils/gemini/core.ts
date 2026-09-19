@@ -105,6 +105,26 @@ export const getApiKey = (): string => {
 let aiInstance: GoogleGenAI | null = null
 let lastUsedApiKey = ''
 
+function collectErrorSignals(error: unknown): any[] {
+  const signals: any[] = []
+  const pending: unknown[] = [error]
+  const visited = new Set<unknown>()
+
+  while (pending.length > 0) {
+    const current = pending.shift()
+    if (current === null || current === undefined || visited.has(current)) continue
+    if (typeof current === 'object' || typeof current === 'function') visited.add(current)
+    signals.push(current)
+
+    if (typeof current === 'object' || typeof current === 'function') {
+      const value = current as any
+      pending.push(value.cause, value.error, value.response, value.response?.data)
+    }
+  }
+
+  return signals
+}
+
 export const getAiClient = (apiKey?: string): GoogleGenAI => {
   const key = apiKey || getApiKey()
   if (!key) {
@@ -161,8 +181,15 @@ export const executeGenAI = async <T>(fn: (ai: GoogleGenAI) => Promise<T>): Prom
         return await fn(ai)
       } catch (error: any) {
         lastError = error
-        const status = error.status || error.response?.status
-        const errorMessage = error.message || ''
+        const errorSignals = collectErrorSignals(error)
+        const statusSignal = errorSignals.find(
+          signal => signal?.status !== undefined || signal?.statusCode !== undefined
+        )
+        const status = statusSignal?.status ?? statusSignal?.statusCode
+        const errorMessage = errorSignals
+          .map(signal => `${signal?.message || ''} ${signal?.code || ''}`.trim())
+          .filter(Boolean)
+          .join(' ')
         const isQuotaOrRateLimit =
           status === 429 ||
           errorMessage.includes('RESOURCE_EXHAUSTED') ||
@@ -175,9 +202,13 @@ export const executeGenAI = async <T>(fn: (ai: GoogleGenAI) => Promise<T>): Prom
           status === 503 ||
           status === 504 ||
           status === 'INTERNAL' ||
-          error.code === 'ECONNABORTED' ||
+          /ECONNABORTED|EPIPE|ECONNRESET|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|UND_ERR_SOCKET/i.test(
+            errorMessage
+          ) ||
+          errorMessage.toLowerCase().includes('fetch failed') ||
           errorMessage.toLowerCase().includes('timeout') ||
           errorMessage.toLowerCase().includes('connect') ||
+          errorMessage.toLowerCase().includes('socket hang up') ||
           errorMessage.toLowerCase().includes('internal error')
 
         if (isQuotaOrRateLimit) {

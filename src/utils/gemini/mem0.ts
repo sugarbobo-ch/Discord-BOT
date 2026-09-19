@@ -175,7 +175,7 @@ export function classifyMemoryError(error: unknown): MemoryOperationError {
   const isAuth = status === 401 || status === 403
   const isTransient =
     [500, 502, 503, 504].includes(Number(status)) ||
-    /ECONNABORTED|timeout|connect(?:ion)? failed|internal error|temporarily unavailable/i.test(
+    /ECONNABORTED|EPIPE|ECONNRESET|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|UND_ERR_SOCKET|fetch failed|timeout|connect(?:ion)? failed|socket hang up|internal error|temporarily unavailable/i.test(
       combinedText
     )
 
