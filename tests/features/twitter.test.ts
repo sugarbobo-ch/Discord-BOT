@@ -26,23 +26,23 @@ describe('Twitter Embed Fixer Feature Tests', () => {
   })
 
   describe('replaceTwitterUrls helper', () => {
-    test('should replace x.com with fixupx.com', () => {
+    test('should replace x.com with fixvx.com', () => {
       const input = 'Check this: https://x.com/BXlM08/status/2092182306769518961?s=20'
       const output = replaceTwitterUrls(input)
-      expect(output).toBe('Check this: https://fixupx.com/BXlM08/status/2092182306769518961?s=20')
+      expect(output).toBe('Check this: https://fixvx.com/BXlM08/status/2092182306769518961?s=20')
     })
 
-    test('should replace twitter.com with fxtwitter.com', () => {
+    test('should replace twitter.com with fixvx.com', () => {
       const input = 'Check this: https://twitter.com/user/status/123456'
       const output = replaceTwitterUrls(input)
-      expect(output).toBe('Check this: https://fxtwitter.com/user/status/123456')
+      expect(output).toBe('Check this: https://fixvx.com/user/status/123456')
     })
 
     test('should replace both x.com and twitter.com in same message', () => {
       const input = 'Link1: https://x.com/a/status/1 and Link2: https://www.twitter.com/b/status/2'
       const output = replaceTwitterUrls(input)
       expect(output).toBe(
-        'Link1: https://fixupx.com/a/status/1 and Link2: https://fxtwitter.com/b/status/2'
+        'Link1: https://fixvx.com/a/status/1 and Link2: https://fixvx.com/b/status/2'
       )
     })
   })
@@ -149,7 +149,7 @@ describe('Twitter Embed Fixer Feature Tests', () => {
       expect(mockChannel.send).not.toHaveBeenCalled()
     })
 
-    test('should replace x.com with fixupx.com if no embeds are present after delay', async () => {
+    test('should replace x.com with fixvx.com if no embeds are present after delay', async () => {
       const mockChannel = {
         messages: {
           fetch: vi.fn()
@@ -176,11 +176,11 @@ describe('Twitter Embed Fixer Feature Tests', () => {
 
       expect(mockChannel.messages.fetch).toHaveBeenCalledWith('123')
       expect(mockChannel.send).toHaveBeenCalledWith(
-        'check this: https://fixupx.com/BXlM08/status/2092182306769518961?s=20'
+        'check this: https://fixvx.com/BXlM08/status/2092182306769518961?s=20'
       )
     })
 
-    test('should replace x.com with fixupx.com if embed exists but lacks media (e.g. text/article card only)', async () => {
+    test('should replace x.com with fixvx.com if embed exists but lacks media (e.g. text/article card only)', async () => {
       const mockChannel = {
         messages: {
           fetch: vi.fn()
@@ -207,11 +207,11 @@ describe('Twitter Embed Fixer Feature Tests', () => {
 
       expect(mockChannel.messages.fetch).toHaveBeenCalledWith('123')
       expect(mockChannel.send).toHaveBeenCalledWith(
-        'check this: https://fixupx.com/BXlM08/status/2092182306769518961?s=20'
+        'check this: https://fixvx.com/BXlM08/status/2092182306769518961?s=20'
       )
     })
 
-    test('should replace twitter.com with fxtwitter.com if embeds lack media', async () => {
+    test('should replace twitter.com with fixvx.com if embeds lack media', async () => {
       const mockChannel = {
         messages: {
           fetch: vi.fn()
@@ -235,7 +235,7 @@ describe('Twitter Embed Fixer Feature Tests', () => {
 
       expect(mockChannel.messages.fetch).toHaveBeenCalledWith('123')
       expect(mockChannel.send).toHaveBeenCalledWith(
-        'check this: https://fxtwitter.com/user/status/123456'
+        'check this: https://fixvx.com/user/status/123456'
       )
     })
 

@@ -2,12 +2,12 @@ import { Message } from 'discord.js'
 import { getTwitterSetting } from '../utils/db'
 
 /**
- * 將文字中的 x.com 與 twitter.com 替換為支援 Discord 完整預覽的修復網域 (fixupx.com / fxtwitter.com)
+ * 將文字中的 x.com 與 twitter.com 替換為支援 Discord 完整預覽的修復網域 (fixvx.com)
  */
 export const replaceTwitterUrls = (content: string): string => {
   return content
-    .replace(/(https?:\/\/)(www\.)?x\.com/gi, '$1fixupx.com')
-    .replace(/(https?:\/\/)(www\.)?twitter\.com/gi, '$1fxtwitter.com')
+    .replace(/(https?:\/\/)(www\.)?x\.com/gi, '$1fixvx.com')
+    .replace(/(https?:\/\/)(www\.)?twitter\.com/gi, '$1fixvx.com')
 }
 
 /**

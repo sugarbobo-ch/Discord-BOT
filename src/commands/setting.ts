@@ -33,7 +33,7 @@ export class SettingCommand implements Command {
       .addFields(
         {
           name: '1️⃣ 偵測 x.com / twitter.com 自動置換',
-          value: `目前狀態：${isTwitterEnabled ? '🟢 **已開啟**' : '🔴 **已關閉**'}\n*偵測推特連結並自動置換為 fixupx.com / fxtwitter.com 以便在 Discord 內正常預覽圖片與影片。*`,
+          value: `目前狀態：${isTwitterEnabled ? '🟢 **已開啟**' : '🔴 **已關閉**'}\n*偵測推特連結並自動置換為 fixvx.com 以便在 Discord 內正常預覽圖片與影片。*`,
           inline: false
         },
         {
