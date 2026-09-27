@@ -68,7 +68,7 @@ Use `!` or `！` as the command prefix.
 10. **Real-time Stock Analysis**: Integrates `yahoo-finance2`.
    - **AI Integration**: When a user mentions a stock ticker (e.g. `2330.TW`, `AAPL`) or common nicknames (e.g. `發哥`, `西瓜`, `公公`) in AI chat, real-time market metrics are queried and injected into Gemini's system instructions. The AI switches to an investment analyst persona.
    - **Direct Query Command**: Use `!stock [ticker/name]` (e.g., `!stock 2330`, `!stock 美光`, `!stock 華通`) to directly fetch the current price, percentage change, day high/low, volume, and automatic K-line chart (last 30 days) from Yahoo Finance.
-11. **NSFW Image Check via Gemini**: In non-NSFW channels, `!addimg` automatically triggers a Gemini Multimodal safety check. NSFW images are rejected and deleted automatically.
+11. **Image Uploads**: `!addimg` downloads valid image URLs or attachments into the selected random image pool without an NSFW content check.
 12. **AI Typo Roast**: Detects common typos (`"因該"`, `"以經"`, `"部會"`, `"絕得"`, `"在一次"`) and uses Gemini to roast the user in a humorous way.
 13. **Auto-fix Twitter/X.com links**: Replaces `x.com` links with `fixvx.com` if Discord fails to generate an embed preview within 3 seconds. Can be enabled/disabled per-server via the `!設定` command or `/設定` slash command.
 14. **Features Guide Command**: Use `!功能` / `!features` or the `/功能` slash command to display a beautifully structured list of all available features and commands.

@@ -18,7 +18,6 @@ import { clientManager } from '../../src/utils/client'
 import { CustomCommand } from '../../src/commands/custom'
 import { getDb } from '../../src/utils/db'
 import * as fileManager from '../../src/utils/file'
-import { checkImageNSFW } from '../../src/utils/gemini'
 import fs from 'fs'
 import { commandRegistry } from '../../src/utils/registry'
 
@@ -46,10 +45,6 @@ vi.mock('../../src/utils/file', () => ({
   checkFileDirectoryIsExist: vi.fn().mockReturnValue(true),
   isImage: vi.fn().mockReturnValue(true),
   checkURL: vi.fn().mockReturnValue(true)
-}))
-
-vi.mock('../../src/utils/gemini', () => ({
-  checkImageNSFW: vi.fn().mockResolvedValue({ nsfw: false, reason: '' })
 }))
 
 const mockMessage = (content: string, guildId = 'test_guild_message_feature', attachmentsList: any[] = []) => {
@@ -287,12 +282,11 @@ describe('Message Feature Tests', () => {
 
     test('should add image via !addimg successfully', async () => {
       vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/uuid.png')
-      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: false, reason: '' })
 
       const msg = mockMessage('!addimg testcmd http://example.com/test.png', testServerId)
       await editCommand(msg, 'addimg')
 
-      expect(msg.reply).toHaveBeenCalledWith('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 1 張圖片，正在下載...')
       const statusMsgMock = await msg.reply.mock.results[0].value
       expect(statusMsgMock.edit).toHaveBeenCalledWith(
         expect.stringContaining('圖片新增成功！本串新增了 1 張圖片。該指令目前共有 2 張圖片 (另有 1 張圖片)。')
@@ -304,24 +298,25 @@ describe('Message Feature Tests', () => {
       )
     })
 
-    test('should reject NSFW image in !addimg on non-NSFW channel', async () => {
+    test('should add image in a non-NSFW channel without checking its content', async () => {
       vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/nsfw.png')
-      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: true, reason: 'NSFW Content detected' })
+      vi.mocked(fs.promises.readFile).mockClear()
+      vi.mocked(fileManager.removeFile).mockClear()
 
       const msg = mockMessage('!addimg testcmd http://example.com/nsfw.png', testServerId)
       await editCommand(msg, 'addimg')
 
-      expect(msg.reply).toHaveBeenCalledWith('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 1 張圖片，正在下載...')
       const statusMsgMock = await msg.reply.mock.results[0].value
       expect(statusMsgMock.edit).toHaveBeenCalledWith(
-        expect.stringContaining('圖片新增失敗:\n• 第 1 張圖片檢測為 NSFW 內容 (原因: NSFW Content detected)')
+        expect.stringContaining('圖片新增成功！本串新增了 1 張圖片。')
       )
-      expect(fileManager.removeFile).toHaveBeenCalled()
+      expect(fs.promises.readFile).not.toHaveBeenCalled()
+      expect(fileManager.removeFile).not.toHaveBeenCalled()
     })
 
     test('should add images from attachments if no URL argument is provided', async () => {
       vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/uuid.png')
-      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: false, reason: '' })
 
       const attachments = [
         { url: 'http://example.com/attach1.png', contentType: 'image/png' },
@@ -330,7 +325,7 @@ describe('Message Feature Tests', () => {
       const msg = mockMessage('!addimg testcmd', testServerId, attachments)
       await editCommand(msg, 'addimg')
 
-      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載並分析圖片安全性...')
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載...')
       const statusMsgMock = await msg.reply.mock.results[0].value
       expect(statusMsgMock.edit).toHaveBeenLastCalledWith(
         expect.stringContaining('圖片新增成功！本串新增了 2 張圖片。該指令目前共有 2 張圖片 (另有 0 張圖片)。')
@@ -349,7 +344,6 @@ describe('Message Feature Tests', () => {
 
     test('should add images from replied message attachments/embeds/URLs', async () => {
       vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/uuid.png')
-      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: false, reason: '' })
 
       const msg = mockMessage('!addimg testcmd', testServerId)
       msg.reference = { messageId: 'replied_msg_id' }
@@ -362,7 +356,7 @@ describe('Message Feature Tests', () => {
 
       await editCommand(msg, 'addimg')
 
-      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載並分析圖片安全性...')
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載...')
       const statusMsgMock = await msg.reply.mock.results[0].value
       expect(statusMsgMock.edit).toHaveBeenLastCalledWith(
         expect.stringContaining('圖片新增成功！本串新增了 2 張圖片。該指令目前共有 2 張圖片 (另有 0 張圖片)。')
@@ -371,7 +365,6 @@ describe('Message Feature Tests', () => {
 
     test('should add images from forwarded message snapshots', async () => {
       vi.mocked(fileManager.downloadFile).mockResolvedValue('assets/images/testcmd/uuid.png')
-      vi.mocked(checkImageNSFW).mockResolvedValue({ nsfw: false, reason: '' })
 
       const msg = mockMessage('!addimg testcmd', testServerId)
       const snapshotsMap = new Map()
@@ -386,7 +379,7 @@ describe('Message Feature Tests', () => {
 
       await editCommand(msg, 'addimg')
 
-      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載並分析圖片安全性...')
+      expect(msg.reply).toHaveBeenCalledWith('偵測到 2 張圖片，正在下載...')
       const statusMsgMock = await msg.reply.mock.results[0].value
       expect(statusMsgMock.edit).toHaveBeenLastCalledWith(
         expect.stringContaining('圖片新增成功！本串新增了 2 張圖片。該指令目前共有 2 張圖片 (另有 0 張圖片)。')

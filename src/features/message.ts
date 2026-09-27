@@ -3,7 +3,6 @@ import * as fileManager from '../utils/file'
 import { clientManager } from '../utils/client'
 import { checkPrefix, checkMentions, checkEmoji, getCommandName, normalizeMessageContent } from '../utils/command'
 import { getDb } from '../utils/db'
-import { checkImageNSFW } from '../utils/gemini'
 import path from 'path'
 import fs from 'fs'
 
@@ -282,15 +281,6 @@ export const displayAvailableCommands = (message: Message): void => {
   ;(message.channel as any).send({ embeds: [embed] })
 }
 
-const getUrlPath = (urlStr: string): string => {
-  try {
-    const parsed = new URL(urlStr)
-    return parsed.pathname
-  } catch {
-    return urlStr.split('?')[0].split('#')[0]
-  }
-}
-
 const getImagesFromMessage = (msg: Message): string[] => {
   const urls: string[] = []
   
@@ -371,12 +361,12 @@ export const addImageCommand = async (message: Message): Promise<void> => {
       if (fileManager.checkURL(urlArg)) {
         imageUrls.push(urlArg)
       } else {
-        const statusMsg = await message.reply('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+        const statusMsg = await message.reply('偵測到 1 張圖片，正在下載...')
         await statusMsg.edit('圖片新增失敗: Invalid URL')
         return
       }
     } else {
-      const statusMsg = await message.reply('偵測到 1 張圖片，正在下載並分析圖片安全性...')
+      const statusMsg = await message.reply('偵測到 1 張圖片，正在下載...')
       await statusMsg.edit('圖片新增失敗: Invalid URL')
       return
     }
@@ -400,13 +390,13 @@ export const addImageCommand = async (message: Message): Promise<void> => {
   const uniqueUrls = Array.from(new Set(imageUrls))
 
   if (uniqueUrls.length === 0) {
-    const statusMsg = await message.reply('偵測到 0 張圖片，正在下載並分析圖片安全性...')
+    const statusMsg = await message.reply('偵測到 0 張圖片，正在下載...')
     await statusMsg.edit('圖片新增失敗: 找不到有效的圖片網址或附件。')
     return
   }
 
   const total = uniqueUrls.length
-  const statusMsg = await message.reply(`偵測到 ${total} 張圖片，正在下載並分析圖片安全性...`)
+  const statusMsg = await message.reply(`偵測到 ${total} 張圖片，正在下載...`)
 
   let successCount = 0
   let failCount = 0
@@ -415,41 +405,15 @@ export const addImageCommand = async (message: Message): Promise<void> => {
   for (let i = 0; i < total; i++) {
     const url = uniqueUrls[i]
     try {
-      await statusMsg.edit(`正在下載並分析圖片安全性 (第 ${i + 1}/${total} 張) - 已成功 ${successCount} 張，失敗 ${failCount} 張...`)
+      await statusMsg.edit(`正在下載圖片 (第 ${i + 1}/${total} 張) - 已成功 ${successCount} 張，失敗 ${failCount} 張...`)
     } catch (editErr) {
       console.warn('Failed to update status message progress:', editErr)
     }
 
     try {
-      const fileDest = await fileManager.downloadFile(url, folderName, error => {
+      await fileManager.downloadFile(url, folderName, error => {
         console.log(error)
       })
-
-      const isNsfwChannel =
-        message.channel.isTextBased() && 'nsfw' in message.channel && (message.channel as any).nsfw
-
-      if (!isNsfwChannel) {
-        const buffer = await fs.promises.readFile(fileDest)
-        const pathname = getUrlPath(url)
-        const mimeType = pathname.toLowerCase().endsWith('.png')
-          ? 'image/png'
-          : pathname.toLowerCase().endsWith('.gif')
-            ? 'image/gif'
-            : 'image/jpeg'
-
-        const nsfwResult = await checkImageNSFW(buffer, mimeType)
-        if (nsfwResult.nsfw) {
-          await fileManager.removeFile(
-            'assets/images/' + folderName,
-            path.basename(fileDest),
-            folderName
-          )
-          failCount++
-          failReasons.push(`第 ${i + 1} 張圖片檢測為 NSFW 內容 (原因: ${nsfwResult.reason})`)
-          continue
-        }
-      }
-
       successCount++
     } catch (error: any) {
       console.error(error)
